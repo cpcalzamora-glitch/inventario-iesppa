@@ -108,11 +108,48 @@ check(hojaFilas('SOBRANTES') === 4 && sheetB().length === 2417, 'sobrantes solo 
 const cfg = gas.__ss.getSheetByName('CONFIG').values.find(r => r[0] === 'correlativo_sobrante');
 check(cfg[1] === '4', 'CONFIG.correlativo_sobrante = 4');
 
-// --- Cierre ---
+// --- Cierre en dos pasos: constancia IMPRESA → FIRMADA (recién ahí CERRADO) ---
+const amb = (id) => { const v = gas.__ss.getSheetByName('AMBIENTES').values; return Object.fromEntries(v[0].map((c, i) => [c, v.find(r => r[0] === id)[i] ?? ''])); };
+check(sync(t1, [{ type: 'firmarConstancia', op_id: uid(), ambiente_id: '202' }])[0].estado === 'error', 'no se puede marcar FIRMADA sin generar antes la constancia');
 const ci = sync(t1, [{ type: 'cerrarAmbiente', op_id: uid(), ambiente_id: '202' }])[0];
-check(ci.estado === 'ok' && ci.data.ubicados === 68 && ci.data.pendientes.length === 15 && ci.data.sobrantes === 3, 'cerrar Aula 202: 68 ubicados, 15 pendientes, 3 sobrantes');
+check(ci.estado === 'ok' && ci.data.ubicados === 68 && ci.data.pendientes.length === 15 && ci.data.sobrantes === 3, 'cerrar Aula 202 (genera constancia): 68 ubicados, 15 pendientes, 3 sobrantes');
+check(amb('202').constancia_estado === 'IMPRESA' && amb('202').estado === 'EN_CURSO' && amb('202').constancia_fecha, 'constancia IMPRESA con fecha; el ambiente sigue EN_CURSO hasta la firma');
 check(sheetB().filter(b => ci.data.pendientes.includes(b.id)).every(b => b.estado_verif === 'PENDIENTE'), 'los pendientes quedan PENDIENTE (no faltantes)');
+// Si se verifica algo más después de imprimir, la constancia queda desactualizada.
+const extra = carp.find(b => !sheetB().find(x => x.id === b.id && x.estado_verif === 'UBICADO'));
+const rx = sync(t1, [{ type: 'verificarLote', op_id: uid(), ambiente_id: '202', bien_ids: [extra.id], estado_conserv: 'B' }])[0];
+check(rx.estado === 'ok' && /desactualizada/.test(rx.data.aviso) && amb('202').constancia_estado === 'PENDIENTE', 'verificar tras imprimir → constancia vuelve a PENDIENTE, con aviso');
+check(sync(t1, [{ type: 'firmarConstancia', op_id: uid(), ambiente_id: '202' }])[0].estado === 'error', 'una constancia desactualizada no se puede marcar FIRMADA');
+const ci2 = sync(t1, [{ type: 'cerrarAmbiente', op_id: uid(), ambiente_id: '202' }])[0];
+const fi = sync(t1, [{ type: 'firmarConstancia', op_id: uid(), ambiente_id: '202', firmante: 'RESPONSABLE PRUEBA' }])[0];
+check(ci2.data.ubicados === 69 && fi.estado === 'ok' && amb('202').estado === 'CERRADO' && amb('202').constancia_estado === 'FIRMADA' && amb('202').constancia_firmante === 'RESPONSABLE PRUEBA' && amb('202').total_ubicado === '69', 'constancia regenerada (69) y FIRMADA → ambiente CERRADO');
 check(sync(t1, [{ type: 'verificar', op_id: uid(), bien_id: carp[25] ? carp[25].id : a202[0].id, ambiente_id: '202', estado_conserv: 'B' }])[0].estado === 'error', 'no se verifica en un ambiente cerrado');
+check(gas.__ss.getSheetByName('HISTORIAL').values.filter(r => r[4] === 'CERRAR_AMBIENTE' && r[5] === 'ambiente.constancia_estado').length === 3, 'impresión y firma quedan en HISTORIAL (CERRAR_AMBIENTE)');
+sync(t1, [{ type: 'abrirAmbiente', op_id: uid(), ambiente_id: '202' }]);
+check(amb('202').estado === 'EN_CURSO' && amb('202').constancia_estado === 'PENDIENTE', 'reabrir → EN_CURSO y constancia PENDIENTE (la firmada queda en HISTORIAL)');
+
+// --- Situación U/D ---
+const libres = c12.filter(b => !sheetB().find(x => x.id === b.id && x.estado_verif === 'UBICADO'));
+const sd = sync(t1, [{ type: 'verificar', op_id: uid(), bien_id: libres[0].id, ambiente_id: '102', estado_conserv: 'M', situacion: 'D' }])[0];
+check(sd.estado === 'ok' && sd.data.bien.situacion === 'D', 'situación D (desuso) se guarda en BIENES.situacion');
+check(sheetB().filter(b => b.estado_verif === 'UBICADO' && b.id !== libres[0].id).every(b => b.situacion === 'U'), 'sin indicar, la situación es U (uso)');
+check(sync(t1, [{ type: 'verificar', op_id: uid(), bien_id: libres[1].id, ambiente_id: '102', estado_conserv: 'B', situacion: 'X' }])[0].estado === 'error', 'situación fuera de U/D se rechaza');
+
+// --- Módulo 2c: 2 bienes de prueba referidos como entregados sin baja ---
+const ref = c12.filter(b => !sheetB().find(x => x.id === b.id && x.estado_verif === 'UBICADO')).slice(-2);
+const shB = gas.__ss.getSheetByName('BIENES').values;
+const hdr = shB[0];
+ref.forEach(b => { const r = shB.find(x => x[0] === b.id); r[hdr.indexOf('situacion_especial')] = 'REFERIDO_ENTREGADO_SIN_BAJA'; r[hdr.indexOf('ref_declaracion')] = 'D-001'; }); // lo hará el ADMIN en la Fase 2
+const rr = sync(t2, [{ type: 'verificar', op_id: uid(), bien_id: ref[0].id, ambiente_id: '102', estado_conserv: 'R' }])[0];
+check(rr.estado === 'ok' && /referido como entregado/.test(rr.data.aviso) && rr.data.bien.situacion_especial === '' && rr.data.bien.ref_declaracion === 'D-001', '2c: el bien referido que aparece se confirma, se quita la marca y conserva la declaración');
+check(gas.__ss.getSheetByName('HISTORIAL').values.some(r => r[4] === 'QUITAR_REFERIDO' && r[3] === ref[0].id), '2c: quitar la marca queda en HISTORIAL (QUITAR_REFERIDO)');
+const r2 = sheetB().find(b => b.id === ref[1].id);
+check(r2.situacion_especial === 'REFERIDO_ENTREGADO_SIN_BAJA' && r2.estado_verif === 'PENDIENTE', '2c: el que no aparece sigue PENDIENTE y marcado (no se declara faltante en campo)');
+
+// --- Informes (conteos de la prueba 6 del plan) ---
+const todos = sheetB();
+check(todos.filter(b => b.destino_informe === 'DREP+INTERNO').every(b => /^\d{12}$/.test(b.cod_patrimonial)), 'informe DREP: solo códigos de 12 dígitos');
+check(todos.length + hojaFilas('SOBRANTES') === 2417 + 4, 'informe interno: todas las filas de BIENES + sobrantes (2,417 + 4)');
 
 // --- Cambios incrementales ---
 const gc = api({ action: 'getCambios', token: t1, desde_n: nHist }).data;

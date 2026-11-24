@@ -6,8 +6,12 @@
  */
 
 var ESTADOS_CONSERV = ['B', 'R', 'M', 'CH', 'RAEE'];
+var SITUACIONES = ['U', 'D']; // Uso / Desuso (columna SITUAC. de la constancia)
+var REFERIDO = 'REFERIDO_ENTREGADO_SIN_BAJA';
 var COLS_VERIF = ['estado_verif', 'ambiente_real_id', 'responsable_real', 'estado_conserv', 'etiqueta',
   'foto_url', 'obs_campo', 'verificado_por', 'verificado_en', 'version'];
+// Columnas agregadas en la v3 que también escribe la app (contiguas al final de BIENES).
+var COLS_VERIF_V3 = ['situacion_especial', 'ref_declaracion', 'situacion'];
 
 var OPERACIONES = {
   abrirAmbiente: opAbrirAmbiente_,
@@ -15,7 +19,8 @@ var OPERACIONES = {
   verificarLote: opVerificarLote_,
   registrarSobrante: opRegistrarSobrante_,
   editarResponsableAmbiente: opEditarResponsableAmbiente_,
-  cerrarAmbiente: opCerrarAmbiente_
+  cerrarAmbiente: opCerrarAmbiente_,
+  firmarConstancia: opFirmarConstancia_
 };
 
 /** Clave de agrupación para la vista por lote. Debe ser idéntica a grupoClave() del frontend. */
@@ -82,19 +87,10 @@ function leerColumna_(hoja, col) {
 }
 
 function guardarContexto_(ctx) {
-  // Bienes: se escriben solo las columnas de verificación, por tramos de filas contiguas.
+  // Bienes: se escriben solo las columnas que llena la app, por tramos de filas contiguas.
   var filas = Object.keys(ctx.bienesSucios).map(Number).sort(function (a, b) { return a - b; });
-  var c0 = ctx.B.idx[COLS_VERIF[0]];
-  var c1 = ctx.B.idx[COLS_VERIF[COLS_VERIF.length - 1]];
-  var i = 0;
-  while (i < filas.length) {
-    var j = i;
-    while (j + 1 < filas.length && filas[j + 1] === filas[j] + 1) j++;
-    var bloque = [];
-    for (var k = filas[i]; k <= filas[j]; k++) bloque.push(ctx.B.rows[k].slice(c0, c1 + 1));
-    ctx.B.sh.getRange(filas[i] + 2, c0 + 1, bloque.length, c1 - c0 + 1).setValues(bloque);
-    i = j + 1;
-  }
+  escribirTramos_(ctx, filas, COLS_VERIF);
+  escribirTramos_(ctx, filas, COLS_VERIF_V3);
   Object.keys(ctx.ambSucios).forEach(function (k) {
     var n = Number(k);
     var fila = ctx.A.rows[n];
@@ -107,6 +103,25 @@ function guardarContexto_(ctx) {
     t.rows.forEach(function (r, idx) {
       if (r[0] === 'correlativo_sobrante') t.sh.getRange(idx + 2, 2).setValue(String(ctx.config.correlativo_sobrante));
     });
+  }
+}
+
+/** Escribe un grupo de columnas contiguas de BIENES, por tramos de filas contiguas. */
+function escribirTramos_(ctx, filas, cols) {
+  if (!filas.length) return;
+  var c0 = ctx.B.idx[cols[0]];
+  var c1 = ctx.B.idx[cols[cols.length - 1]];
+  if (c0 === undefined || c1 === undefined || c1 - c0 !== cols.length - 1) {
+    throw new Error('Faltan o están desordenadas las columnas ' + cols.join(', ') + ' en BIENES. Ejecute "Actualizar estructura a la v3".');
+  }
+  var i = 0;
+  while (i < filas.length) {
+    var j = i;
+    while (j + 1 < filas.length && filas[j + 1] === filas[j] + 1) j++;
+    var bloque = [];
+    for (var k = filas[i]; k <= filas[j]; k++) bloque.push(ctx.B.rows[k].slice(c0, c1 + 1));
+    ctx.B.sh.getRange(filas[i] + 2, c0 + 1, bloque.length, c1 - c0 + 1).setValues(bloque);
+    i = j + 1;
   }
 }
 
@@ -132,6 +147,7 @@ function bienObj_(ctx, i) {
 
 function setBien_(ctx, i, campos, op, accion) {
   var row = ctx.B.rows[i];
+  while (row.length < ctx.B.header.length) row.push('');
   var id = row[ctx.B.idx.id];
   Object.keys(campos).forEach(function (c) {
     var k = ctx.B.idx[c];
@@ -191,6 +207,27 @@ function exigirAmbienteAbierto_(amb) {
   if (amb.estado === 'CERRADO') throw new Error('El ambiente ' + amb.nombre + ' está cerrado. Ábralo de nuevo para seguir.');
 }
 
+function situacionValida_(s) {
+  s = String(s || 'U').toUpperCase();
+  if (SITUACIONES.indexOf(s) < 0) throw new Error('Situación no válida: ' + s + ' (U = uso, D = desuso).');
+  return s;
+}
+
+/**
+ * Si el ambiente ya tenía la constancia impresa (sin firmar) y cambia lo verificado en él,
+ * la constancia queda desactualizada: vuelve a PENDIENTE y hay que generarla de nuevo.
+ */
+function invalidarConstancia_(ctx, ambId, op) {
+  if (!ambId || ctx.ambPorId[ambId] === undefined) return '';
+  var a = ambObj_(ctx, ambId);
+  if (a.constancia_estado === 'IMPRESA') {
+    setAmb_(ctx, ambId, { constancia_estado: 'PENDIENTE' }, op, 'EDITAR');
+    return 'La constancia impresa de ' + a.nombre + ' quedó desactualizada: vuelva a generarla antes de firmar.';
+  }
+  if (a.estado === 'CERRADO') return 'Atención: ' + a.nombre + ' ya estaba cerrado con constancia firmada; revise ese ambiente.';
+  return '';
+}
+
 function estadoValido_(e) {
   e = String(e || '').toUpperCase();
   if (ESTADOS_CONSERV.indexOf(e) < 0) throw new Error('Estado de conservación no válido: ' + e);
@@ -205,6 +242,8 @@ function opAbrirAmbiente_(ctx, op) {
   if (amb.estado !== 'EN_CURSO') {
     var c = { estado: 'EN_CURSO' };
     if (!amb.abierto_por) c.abierto_por = ctx.sesion.usuario;
+    // Al abrir (o reabrir) la constancia queda por generar; la firmada anterior sigue en el HISTORIAL.
+    c.constancia_estado = 'PENDIENTE';
     setAmb_(ctx, amb.id, c, op, 'ABRIR_AMBIENTE');
   }
   return { ambiente: ambObj_(ctx, amb.id) };
@@ -243,11 +282,19 @@ function verificarFila_(ctx, i, amb, op, enLote) {
     histRow_(ctx, op, b.id, 'EDITAR', 'CONFLICTO_VERSION', String(b.version), String(vCli));
   }
   var mover = b.estado_verif === 'UBICADO' && b.ambiente_real_id && b.ambiente_real_id !== amb.id;
+  var avisos = aviso ? [aviso] : [];
+  var situacion = situacionValida_(op.situacion);
+  // Bien referido como entregado sin baja (2c) que apareció físicamente: se quita la marca, con historial.
+  if (b.situacion_especial === REFERIDO) {
+    setBien_(ctx, i, { situacion_especial: '' }, op, 'QUITAR_REFERIDO');
+    avisos.push('Este bien estaba referido como entregado sin baja' + (b.ref_declaracion ? ' (declaración ' + b.ref_declaracion + ')' : '') + '. Apareció: se quitó la marca.');
+  }
   var campos = {
     estado_verif: 'UBICADO',
     ambiente_real_id: amb.id,
     responsable_real: String(op.responsable || amb.responsable || ''),
     estado_conserv: estado,
+    situacion: situacion,
     // Regla 1: etiqueta definitiva solo para 12 dígitos; todo lo demás, temporal.
     etiqueta: b.tipo_codigo === '12D' ? 'DEFINITIVA' : 'TEMPORAL',
     verificado_por: ctx.sesion.usuario,
@@ -256,8 +303,12 @@ function verificarFila_(ctx, i, amb, op, enLote) {
   };
   if (op.obs !== undefined && String(op.obs).trim() !== '') campos.obs_campo = String(op.obs).trim();
   setBien_(ctx, i, campos, op, mover ? 'MOVER' : (enLote ? 'VERIFICAR_LOTE' : 'VERIFICAR'));
+  [amb.id, mover ? b.ambiente_real_id : ''].forEach(function (id) {
+    var t = invalidarConstancia_(ctx, id, op);
+    if (t && avisos.indexOf(t) < 0) avisos.push(t);
+  });
   var r = { bien: bienObj_(ctx, i) };
-  if (aviso) r.aviso = aviso;
+  if (avisos.length) r.aviso = avisos.join(' ');
   return r;
 }
 
@@ -268,12 +319,15 @@ function verificarFila_(ctx, i, amb, op, enLote) {
 function opVerificarLote_(ctx, op) {
   var amb = ambObj_(ctx, op.ambiente_id);
   exigirAmbienteAbierto_(amb);
+  situacionValida_(op.situacion);
   var ids = (op.bien_ids || []).map(String);
   if (!ids.length) throw new Error('No hay bienes en el lote.');
   var usados = {};
   var marcados = [];
   var reemplazos = 0;
   var faltan = 0;
+  var avisos = [];
+  var anotar = function (r) { if (r && r.aviso && avisos.indexOf(r.aviso) < 0) avisos.push(r.aviso); };
   ids.forEach(function (id) {
     var i = ctx.porId[id];
     if (i === undefined) { faltan++; return; }
@@ -281,7 +335,7 @@ function opVerificarLote_(ctx, op) {
     if (b.tipo_codigo === '12D') throw new Error('El bien ' + id + ' tiene código de 12 dígitos: se verifica escaneando.');
     if (b.estado_verif !== 'UBICADO' && !usados[id]) {
       usados[id] = true;
-      verificarFila_(ctx, i, amb, op, true);
+      anotar(verificarFila_(ctx, i, amb, op, true));
       marcados.push(id);
       return;
     }
@@ -296,11 +350,12 @@ function opVerificarLote_(ctx, op) {
     if (alt < 0) { faltan++; return; }
     var altId = ctx.B.rows[alt][ctx.B.idx.id];
     usados[altId] = true;
-    verificarFila_(ctx, alt, amb, op, true);
+    anotar(verificarFila_(ctx, alt, amb, op, true));
     marcados.push(altId);
     reemplazos++;
   });
   return {
+    aviso: avisos.join(' ') || undefined,
     marcados: marcados, reemplazos: reemplazos, sin_reemplazo: faltan,
     bienes: marcados.map(function (id) { return bienObj_(ctx, ctx.porId[id]); })
   };
@@ -335,12 +390,46 @@ function opRegistrarSobrante_(ctx, op) {
     histRow_(ctx, op, cod, 'SOBRANTE', 'denominacion', '', den, amb.id);
   }
   ctx.config.correlativo_sobrante = n;
-  return { codigos: codigos, ambiente_id: amb.id, denominacion: den };
+  var av = invalidarConstancia_(ctx, amb.id, op);
+  return { codigos: codigos, ambiente_id: amb.id, denominacion: den, aviso: av || undefined };
 }
 
-/** Cierra el ambiente. Los pendientes NO pasan a faltantes: quedan PENDIENTE (inventario aparte). */
+/**
+ * Paso 1 del cierre: el celular generó la constancia en PDF con lo verificado.
+ * La constancia queda IMPRESA (falta firmar) y el ambiente sigue EN_CURSO.
+ * Los pendientes NO pasan a faltantes: quedan PENDIENTE (inventario aparte).
+ */
 function opCerrarAmbiente_(ctx, op) {
   var amb = ambObj_(ctx, op.ambiente_id);
+  exigirAmbienteAbierto_(amb);
+  var r = resumenCierre_(ctx, amb);
+  setAmb_(ctx, amb.id, {
+    constancia_estado: 'IMPRESA', constancia_fecha: tsOp_(op), total_ubicado: String(r.ubicados)
+  }, op, 'CERRAR_AMBIENTE');
+  r.ambiente = ambObj_(ctx, amb.id);
+  return r;
+}
+
+/**
+ * Paso 2 del cierre: el responsable firmó y selló la constancia impresa. Recién entonces el ambiente queda CERRADO.
+ * op: {ambiente_id, firmante?}
+ */
+function opFirmarConstancia_(ctx, op) {
+  var amb = ambObj_(ctx, op.ambiente_id);
+  if (amb.estado === 'CERRADO' && amb.constancia_estado === 'FIRMADA') return { ambiente: amb };
+  if (amb.constancia_estado !== 'IMPRESA') {
+    throw new Error('La constancia de ' + amb.nombre + ' no está impresa o quedó desactualizada: genérela de nuevo antes de marcarla como firmada.');
+  }
+  var r = resumenCierre_(ctx, amb);
+  setAmb_(ctx, amb.id, {
+    constancia_estado: 'FIRMADA', constancia_firmante: String(op.firmante || amb.responsable || ''),
+    estado: 'CERRADO', cerrado_por: ctx.sesion.usuario, fecha_cierre: tsOp_(op), total_ubicado: String(r.ubicados)
+  }, op, 'CERRAR_AMBIENTE');
+  r.ambiente = ambObj_(ctx, amb.id);
+  return r;
+}
+
+function resumenCierre_(ctx, amb) {
   var ubicados = 0;
   var pendientes = [];
   for (var k = 0; k < ctx.B.rows.length; k++) {
@@ -350,10 +439,7 @@ function opCerrarAmbiente_(ctx, op) {
   }
   var sobr = leerColumna_('SOBRANTES', 'ambiente_id').filter(function (a) { return a === amb.id; }).length +
     ctx.sobrantes.filter(function (s) { return s.ambiente_id === amb.id; }).length;
-  setAmb_(ctx, amb.id, {
-    estado: 'CERRADO', cerrado_por: ctx.sesion.usuario, fecha_cierre: tsOp_(op), total_ubicado: String(ubicados)
-  }, op, 'CERRAR_AMBIENTE');
-  return { ambiente: ambObj_(ctx, amb.id), ubicados: ubicados, pendientes: pendientes, sobrantes: sobr };
+  return { ubicados: ubicados, pendientes: pendientes, sobrantes: sobr };
 }
 
 /* ---------------- lecturas incrementales ---------------- */

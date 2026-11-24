@@ -4,7 +4,7 @@
  * JSON {action, token, ...}. La respuesta es siempre JSON {ok, data} o {ok:false, error, codigo}.
  */
 
-var API_VERSION = '1.0.0';
+var API_VERSION = '1.1.0';
 
 var ACCIONES = {
   // acción: [función, requiereToken]
@@ -19,7 +19,8 @@ var ACCIONES = {
   verificarLote: [opSuelta_('verificarLote'), true],
   registrarSobrante: [opSuelta_('registrarSobrante'), true],
   editarResponsableAmbiente: [opSuelta_('editarResponsableAmbiente'), true],
-  cerrarAmbiente: [opSuelta_('cerrarAmbiente'), true]
+  cerrarAmbiente: [opSuelta_('cerrarAmbiente'), true],
+  firmarConstancia: [opSuelta_('firmarConstancia'), true]
 };
 
 function opSuelta_(tipo) {
