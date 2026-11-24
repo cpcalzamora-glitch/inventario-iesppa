@@ -1,0 +1,9 @@
+# Datos de la entidad: nunca se suben al repositorio público
+*.xlsx
+*.xls
+*.csv
+tools/servidor-prueba/datos/
+node_modules/
+# Configuración local de clasp (contiene el ID del proyecto)
+apps-script/.clasp.json
+.clasprc.json

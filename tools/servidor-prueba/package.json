@@ -1,0 +1,6 @@
+{
+  "name": "servidor-prueba-inventario",
+  "private": true,
+  "description": "Banco de pruebas local del backend Apps Script (solo pruebas)",
+  "dependencies": { "xlsx": "0.18.5" }
+}

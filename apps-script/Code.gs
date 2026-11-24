@@ -1,0 +1,72 @@
+/**
+ * API del inventario IESPPA 2026.
+ * Una sola URL. El frontend envía POST con Content-Type: text/plain y el cuerpo
+ * JSON {action, token, ...}. La respuesta es siempre JSON {ok, data} o {ok:false, error, codigo}.
+ */
+
+var API_VERSION = '0.1.0';
+
+var ACCIONES = {
+  // acción: [función, requiereToken]
+  login: [function (p) { return login_(p); }, false],
+  logout: [function (p) { return logout_(p.token); }, false],
+  getBootstrap: [function (p, s) { return getBootstrap_(s); }, true]
+};
+
+function doPost(e) {
+  var p;
+  try {
+    p = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+  } catch (err) {
+    return json_({ ok: false, error: 'Solicitud no válida.' });
+  }
+  return json_(ejecutar_(p));
+}
+
+/** GET solo sirve para comprobar que el servicio está vivo (no devuelve datos de bienes). */
+function doGet(e) {
+  var action = e && e.parameter && e.parameter.action;
+  if (action === 'ping') {
+    try {
+      var r = resumenEstructura_();
+      delete r.usuarios_con_pin; // no se exponen nombres de usuario sin token
+      return json_({ ok: true, data: r });
+    } catch (err) {
+      return json_({ ok: false, error: String(err.message || err) });
+    }
+  }
+  return json_({ ok: true, data: { servicio: 'API Inventario IESPPA', version: API_VERSION } });
+}
+
+function ejecutar_(p) {
+  try {
+    var def = ACCIONES[p.action];
+    if (!def) throw new Error('Acción desconocida: ' + p.action);
+    var sesion = def[1] ? validarToken_(p.token) : null;
+    return { ok: true, data: def[0](p, sesion) };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err), codigo: err.codigo || '' };
+  }
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Descarga inicial: bienes (como matriz compacta), ambientes, personal, config y listas.
+ */
+function getBootstrap_(sesion) {
+  var b = leerTabla_('BIENES');
+  return {
+    servidor_ts: ahora_(),
+    usuario: sesion.usuario,
+    rol: sesion.rol,
+    bienes: { columnas: b.header, filas: b.rows },
+    ambientes: aObjetos_(leerTabla_('AMBIENTES')),
+    personal: aObjetos_(leerTabla_('PERSONAL')),
+    config: leerConfig_(),
+    listas: leerListas_(),
+    historial_n: Math.max(0, hoja_('HISTORIAL').getLastRow() - 1)
+  };
+}
