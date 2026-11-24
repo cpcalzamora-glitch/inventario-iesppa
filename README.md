@@ -80,7 +80,7 @@ Los PIN se asignan en el Sheet, desde el menú **Inventario App → Asignar PIN 
 
 1. Suba el repositorio a GitHub. Debe ser público para usar GitHub Pages gratis. Los datos no están en el repositorio.
 2. En GitHub, entre a **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Cada `git push` a `main` publica `web/` en `https://<usuario>.github.io/inventario-iesppa/`.
+3. Cada `git push` a `main` publica `web/` en **https://cpcalzamora-glitch.github.io/inventario-iesppa/** (repositorio `cpcalzamora-glitch/inventario-iesppa`).
 4. **Al publicar cambios en la web**, suba la constante `VERSION` de `web/sw.js`. Así los celulares descargan la versión nueva.
 
 ## Instalar en el celular
