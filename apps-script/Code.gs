@@ -4,14 +4,34 @@
  * JSON {action, token, ...}. La respuesta es siempre JSON {ok, data} o {ok:false, error, codigo}.
  */
 
-var API_VERSION = '0.1.0';
+var API_VERSION = '1.0.0';
 
 var ACCIONES = {
   // acción: [función, requiereToken]
   login: [function (p) { return login_(p); }, false],
   logout: [function (p) { return logout_(p.token); }, false],
-  getBootstrap: [function (p, s) { return getBootstrap_(s); }, true]
+  getBootstrap: [function (p, s) { return getBootstrap_(s); }, true],
+  getCambios: [function (p) { return getCambios_(p); }, true],
+  // Escrituras: una operación suelta o una cola completa (sync).
+  sync: [function (p, s) { return procesarOps_(p.ops || [], s); }, true],
+  abrirAmbiente: [opSuelta_('abrirAmbiente'), true],
+  verificar: [opSuelta_('verificar'), true],
+  verificarLote: [opSuelta_('verificarLote'), true],
+  registrarSobrante: [opSuelta_('registrarSobrante'), true],
+  editarResponsableAmbiente: [opSuelta_('editarResponsableAmbiente'), true],
+  cerrarAmbiente: [opSuelta_('cerrarAmbiente'), true]
 };
+
+function opSuelta_(tipo) {
+  return function (p, s) {
+    var op = JSON.parse(JSON.stringify(p));
+    delete op.token;
+    op.type = tipo;
+    var r = procesarOps_([op], s)[0];
+    if (r.estado === 'error') throw new Error(r.error);
+    return r;
+  };
+}
 
 function doPost(e) {
   var p;
@@ -67,6 +87,7 @@ function getBootstrap_(sesion) {
     personal: aObjetos_(leerTabla_('PERSONAL')),
     config: leerConfig_(),
     listas: leerListas_(),
+    sobrantes: aObjetos_(leerTabla_('SOBRANTES')),
     historial_n: Math.max(0, hoja_('HISTORIAL').getLastRow() - 1)
   };
 }
