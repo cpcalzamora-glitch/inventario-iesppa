@@ -9,6 +9,8 @@ export async function procesarCodigo(codigo) {
   const amb = ambiente(S.ambienteActivo);
   if (!amb) { toast('Primero abra un ambiente.', 'error'); return; }
   const lista = S.porCodigo.get(codigo) || [];
+  // Solo existen códigos de 8 o 12 dígitos: otra longitud se avisa y no se asume (ni se completa ni se recorta).
+  if (/^\d+$/.test(codigo) && codigo.length !== 8 && codigo.length !== 12) { beep(false); return longitudInvalida(codigo, lista); }
   if (!lista.length) { beep(false); return noExiste(codigo); }
   const c12 = lista.filter((b) => b.tipo_codigo === '12D');
   if (!c12.length) {
@@ -26,6 +28,15 @@ export async function procesarCodigo(codigo) {
     if (!b) return;
   }
   return fichaVerificar(b);
+}
+
+function longitudInvalida(codigo, lista) {
+  return hoja((cerrar) => h('div',
+    h('div.banda.roja', `Código de ${codigo.length} dígitos: no válido`),
+    h('h2.codigo', codigo),
+    h('p.texto', 'Los códigos patrimoniales tienen 8 o 12 dígitos. La app no asume a cuál corresponde. Revise la etiqueta y vuelva a leerla, o escriba el código completo a mano.'),
+    lista.length ? h('p.texto.chico', `En la base figura así en ${lista.length} bien(es): ${lista[0].denominacion} (Ref. ${lista[0].cod_interno || '—'}). Verifíquelo en la pestaña "Por lote" y anote la observación.`) : null,
+    h('div.botones', h('button.btn.pri', { onclick: () => cerrar() }, 'Reintentar'))));
 }
 
 function noExiste(codigo) {
