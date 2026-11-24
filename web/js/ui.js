@@ -89,4 +89,18 @@ export function selectorEstado(valor, alCambiar) {
   return cont;
 }
 
+export const SITUACIONES = [['U', 'Uso'], ['D', 'Desuso']];
+
+/** Selector de situación (U = uso, D = desuso), columna SITUAC. de la constancia. */
+export function selectorSituacion(valor, alCambiar) {
+  const cont = h('div.estados.dos');
+  const pintar = () => {
+    cont.replaceChildren(...SITUACIONES.map(([k, n]) => h('button.estado' + (k === valor ? '.sel' : ''), {
+      type: 'button', title: n, onclick: () => { valor = k; pintar(); alCambiar(k); }
+    }, h('b', k), h('small', n))));
+  };
+  pintar();
+  return cont;
+}
+
 export function escapar(t) { return String(t ?? ''); }

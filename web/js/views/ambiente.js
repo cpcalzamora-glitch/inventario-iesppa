@@ -1,7 +1,7 @@
 // Ambiente activo: pantalla principal de trabajo.
 import { S, ambiente, resumenAmbiente, grupoClave, nombreAmbiente, suscribir } from '../store.js';
 import { encolar } from '../cola.js';
-import { h, hoja, toast, confirmar, selectorEstado, fechaCorta } from '../ui.js';
+import { h, hoja, toast, confirmar, selectorEstado, selectorSituacion, fechaCorta } from '../ui.js';
 import { procesarCodigo, fichaVerificar } from './flujo.js';
 import { abrirSobrante } from './sobrante.js';
 import { abrirEscaner } from './escaner.js';
@@ -10,6 +10,7 @@ import { ir } from '../app.js';
 let pestana = 'codigo';
 const conteos = {};          // clave de grupo -> número elegido
 const estadosGrupo = {};     // clave de grupo -> estado elegido
+const situacionGrupo = {};   // clave de grupo -> U/D
 const abiertos = new Set();  // grupos desplegados
 
 export function vistaAmbiente(id) {
@@ -84,7 +85,7 @@ function listaConCodigo(id) {
     const aqui = ok && b.ambiente_real_id === id;
     const fuera = ok && !aqui;
     return h('button.item' + (aqui ? '.hecho' : '') + (fuera ? '.fuera' : ''), { onclick: () => fichaVerificar(b) },
-      h('div.item-t', h('span.marca', aqui ? '✓' : fuera ? '→' : '○'), ' ', b.cod_patrimonial, ' ', b.apto_etiqueta === 'SI' ? h('span.chip', 'apto') : null, b.cod_duplicado === 'SI' ? h('span.chip.amarillo', 'dup.') : null),
+      h('div.item-t', h('span.marca', aqui ? '✓' : fuera ? '→' : '○'), ' ', b.cod_patrimonial, ' ', b.apto_etiqueta === 'SI' ? h('span.chip', 'apto') : null, b.cod_duplicado === 'SI' ? h('span.chip.amarillo', 'dup.') : null, b.situacion_especial ? h('span.chip.rojo', 'referido entregado') : null),
       h('div.item-s', `${b.denominacion} · ${b.marca} · S/${b.serie}`),
       aqui ? h('div.item-s.ok', `${b.estado_conserv} · ${b.verificado_por} ${fechaCorta(b.verificado_en)}`) : null,
       fuera ? h('div.item-s.alerta', `Ubicado en ${nombreAmbiente(b.ambiente_real_id)}`) : null,
@@ -132,7 +133,7 @@ function listaLotes(id, tipo, repintar) {
         const usar = Math.min(n, pend.length);
         if (!usar) return;
         const elegidos = pend.slice(0, usar);
-        await encolar('verificarLote', { ambiente_id: id, bien_ids: elegidos.map((b) => b.id), estado_conserv: estadosGrupo[k], responsable: amb.responsable });
+        await encolar('verificarLote', { ambiente_id: id, bien_ids: elegidos.map((b) => b.id), estado_conserv: estadosGrupo[k], situacion: situacionGrupo[k] || 'U', responsable: amb.responsable });
         const refs = elegidos.map((b) => b.cod_interno);
         conteos[k] = 0;
         toast(`✓ ${usar} ubicada(s). Etiquetas TEMPORALES: ${refs.length > 6 ? refs[0] + ' … ' + refs[refs.length - 1] : refs.join(', ')}`, 'ok', 4500);
@@ -149,6 +150,7 @@ function listaLotes(id, tipo, repintar) {
             h('button', { onclick: () => { conteos[k] = n + 1; repintar(); } }, '+')),
           h('button.btn.sec.chico', { onclick: () => { conteos[k] = pend.length; repintar(); } }, `Todas (${pend.length})`)) : null,
         n ? selectorEstado(estadosGrupo[k], (v) => { estadosGrupo[k] = v; }) : null,
+        n ? selectorSituacion(situacionGrupo[k] || 'U', (v) => { situacionGrupo[k] = v; }) : null,
         exceso ? h('div.banda.amarilla', `Contó ${exceso} más de las esperadas.`,
           h('button.btn.sec.chico', { onclick: () => abrirSobrante({ denominacion: b0.denominacion, marca: b0.marca, modelo: b0.modelo, color: b0.color, dimensiones: b0.dimensiones, cantidad: exceso, estado_conserv: estadosGrupo[k] }) }, `Registrar ${exceso} sobrante(s)`)) : null,
         n && pend.length ? h('button.btn.pri', { onclick: confirmarN }, `Confirmar ${Math.min(n, pend.length)} ubicada(s)`) : null,
@@ -158,7 +160,7 @@ function listaLotes(id, tipo, repintar) {
           h('span.det', b.estado_verif === 'UBICADO' ? `✓ ${b.estado_conserv} · ${b.verificado_por}` : `Pendiente · ant. ${b.estado_ref || '—'}${b.serie && b.serie !== 'S.S.' ? ' · S/' + b.serie : ''}`),
           b.estado_verif === 'UBICADO' ? null : h('button.btn.sec.chico', {
             onclick: async () => {
-              await encolar('verificarLote', { ambiente_id: id, bien_ids: [b.id], estado_conserv: estadosGrupo[k], responsable: amb.responsable });
+              await encolar('verificarLote', { ambiente_id: id, bien_ids: [b.id], estado_conserv: estadosGrupo[k], situacion: situacionGrupo[k] || 'U', responsable: amb.responsable });
               toast(`✓ ${b.cod_interno} ubicada · etiqueta TEMPORAL`);
             }
           }, 'Marcar')))) : null);

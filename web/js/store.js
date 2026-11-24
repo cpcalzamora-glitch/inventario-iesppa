@@ -105,6 +105,8 @@ export async function leerBaseLocal() {
   return true;
 }
 
+export const REFERIDO = 'REFERIDO_ENTREGADO_SIN_BAJA';
+
 export function ahoraISO() { return new Date().toISOString(); }
 
 /* ----- Aplicación optimista de operaciones (igual que en el servidor) ----- */
@@ -128,12 +130,14 @@ function verificarLocal(id, op, usuario) {
     ambiente_real_id: op.ambiente_id,
     responsable_real: op.responsable || a.responsable || '',
     estado_conserv: op.estado_conserv,
+    situacion: op.situacion || 'U',
     etiqueta: b.tipo_codigo === '12D' ? 'DEFINITIVA' : 'TEMPORAL',
     verificado_por: usuario,
     verificado_en: op.ts,
     version: String(Number(b.version || 0) + 1)
   });
   if (op.obs) b.obs_campo = op.obs;
+  if (b.situacion_especial === REFERIDO) b.situacion_especial = ''; // apareció: se quita la marca
 }
 
 /* ----- Consultas ----- */

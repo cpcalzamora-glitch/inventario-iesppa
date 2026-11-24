@@ -1,7 +1,8 @@
 // Qué hacer con un código leído (cámara, lector Bluetooth o escrito a mano).
 import { S, ambiente, nombreAmbiente } from '../store.js';
 import { encolar } from '../cola.js';
-import { h, hoja, toast, beep, fechaCorta, selectorEstado } from '../ui.js';
+import { h, hoja, toast, beep, fechaCorta, selectorEstado, selectorSituacion } from '../ui.js';
+import { REFERIDO } from '../store.js';
 import { abrirSobrante } from './sobrante.js';
 
 /** Devuelve una promesa que se resuelve cuando el usuario termina (para reanudar la cámara). */
@@ -65,6 +66,10 @@ function elegirDuplicado(codigo, filas) {
 export function fichaVerificar(b) {
   const amb = ambiente(S.ambienteActivo);
   let estado = b.estado_conserv || b.estado_ref || 'B';
+  let situacion = b.situacion || 'U';
+  const referido = b.situacion_especial === REFERIDO
+    ? h('div.banda.roja', 'Este bien fue referido como ENTREGADO SIN BAJA' + (b.ref_declaracion ? ' (declaración ' + b.ref_declaracion + ')' : '') + '. Si está aquí, confírmelo: se quitará la marca.')
+    : null;
   let mover = false;
   let banda = null;
   let obs = '';
@@ -83,15 +88,16 @@ export function fichaVerificar(b) {
       disabled: noApto,
       onclick: async () => {
         await encolar('verificar', {
-          bien_id: b.id, ambiente_id: amb.id, estado_conserv: estado, responsable: amb.responsable,
+          bien_id: b.id, ambiente_id: amb.id, estado_conserv: estado, situacion, responsable: amb.responsable,
           version_cliente: b.version, mover: mover || undefined, obs: obs || undefined
         });
-        toast(yaOtro ? '✓ Movido a este ambiente' : '✓ Ubicado · pegar etiqueta DEFINITIVA');
+        toast(yaOtro ? '✓ Movido a este ambiente' : (referido ? '✓ Ubicado · se quitó la marca de "entregado sin baja"' : '✓ Ubicado · pegar etiqueta DEFINITIVA'));
         cerrar(true);
       }
     }, yaAqui ? 'Actualizar estado' : (yaOtro ? 'Mover a este ambiente' : (b.ambiente_id !== amb.id && b.ambiente_id !== 'SIN_UBICAR' ? 'Confirmar aquí' : 'Confirmar'))
     );
     return h('div',
+      referido,
       banda,
       h('div.ficha',
         h('div.ficha-den', b.denominacion),
@@ -108,6 +114,8 @@ export function fichaVerificar(b) {
       noApto ? h('label.aviso-apto', chk, ' No figura como apto para etiqueta. Confirmo que el código y la serie coinciden con el bien.') : null,
       h('div.sub', 'Estado de conservación'),
       selectorEstado(estado, (v) => { estado = v; }),
+      h('div.sub', 'Situación'),
+      selectorSituacion(situacion, (v) => { situacion = v; }),
       h('details.obs', h('summary', 'Agregar observación'),
         h('textarea', { rows: 2, maxLength: 200, placeholder: 'Observación (opcional)', oninput: (e) => { obs = e.target.value; } })),
       h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Cancelar'), btn));
