@@ -6,6 +6,7 @@ import { procesarCodigo, fichaVerificar } from './flujo.js';
 import { abrirSobrante } from './sobrante.js';
 import { abrirEscaner } from './escaner.js';
 import { ir } from '../app.js';
+import { descargarConstancia, dniDe } from '../constancia.js';
 
 let pestana = 'codigo';
 const conteos = {};          // clave de grupo -> número elegido
@@ -28,6 +29,11 @@ export function vistaAmbiente(id) {
         h('button.icono', { onclick: () => ir('#/ambientes'), title: 'Volver' }, '‹'),
         h('div.amb-tit', h('div.amb-nombre', amb.nombre), h('div.amb-ubic', [amb.ubicacion, amb.estado === 'CERRADO' ? 'CERRADO' : ''].filter(Boolean).join(' · ')))),
       h('button.amb-resp', { onclick: () => editarResponsable(amb) }, h('span', 'Responsable: '), h('b', amb.responsable || 'POR DEFINIR'), ' ✎'),
+      amb.constancia_estado === 'IMPRESA' ? h('div.constancia-pend',
+        h('div', h('b', 'Constancia impresa · falta la firma'), h('small', ' ' + fechaCorta(amb.constancia_fecha))),
+        h('div.botones',
+          h('button.btn.sec.chico', { onclick: () => bajarPdf(amb, amb.constancia_fecha) }, 'PDF'),
+          h('button.btn.pri.chico', { onclick: () => marcarFirmada(amb) }, 'Marcar FIRMADA'))) : null,
       h('div.amb-cont',
         h('div.big', h('b', r.ubicadosEsperados), ' / ', r.esperados, h('small', ' verificados')),
         h('div.amb-mini', r.deOtros ? `+${r.deOtros} de otros ambientes · ` : '', `Aptos para etiqueta: ${r.aptos}`)),
@@ -58,6 +64,7 @@ export function vistaAmbiente(id) {
     h('button.btn.sec', { onclick: () => abrirSobrante() }, '+ Sobrante'),
     h('button.btn.pri.grande', { onclick: () => abrirEscaner() }, '▣ Escanear'),
     h('button.btn.sec', { onclick: () => cerrarAmbiente(amb) }, 'Cerrar amb.'));
+  if (amb.estado === 'CERRADO') pie.replaceChildren(h('button.btn.pri.grande', { onclick: async () => { if (await reabrir(amb)) pintar(); } }, 'Reabrir ambiente'));
 
   raiz.append(cabecera, cuerpo, pie);
   pintar();
@@ -197,9 +204,11 @@ function editarResponsable(amb) {
 }
 
 async function cerrarAmbiente(amb) {
+  if (amb.estado === 'CERRADO') { toast('El ambiente ya está cerrado.', 'error'); return; }
   const pend = S.bienes.filter((b) => b.ambiente_id === amb.id && b.estado_verif !== 'UBICADO');
   const r = resumenAmbiente(amb.id);
-  const sobr = S.sobrantes.filter((s) => s.ambiente_id === amb.id).length + S.sobrantesLocales.filter((s) => s.ambiente_id === amb.id).reduce((n, s) => n + Number(s.cantidad || 1), 0);
+  const sinCodigo = S.sobrantesLocales.filter((s) => s.ambiente_id === amb.id && !s.codigos);
+  const sobr = S.sobrantes.filter((s) => s.ambiente_id === amb.id).length + sinCodigo.reduce((n, s) => n + Number(s.cantidad || 1), 0);
   const ok = await hoja((cerrar) => h('div',
     h('h2', 'Cerrar ' + amb.nombre),
     h('div.resumen',
@@ -208,11 +217,49 @@ async function cerrarAmbiente(amb) {
       h('div', h('b', sobr), h('small', 'sobrantes'))),
     pend.length ? h('p.texto.chico', 'Los pendientes NO pasan a faltantes: quedan "no ubicados en su ambiente" para el inventario aparte.') : null,
     pend.length ? h('div.lista.corta', pend.slice(0, 80).map((b) => h('div.fila', h('span.ref', b.cod_patrimonial || b.cod_interno), h('span.det', b.denominacion)))) : null,
-    h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Seguir trabajando'), h('button.btn.pri', { onclick: () => cerrar(true) }, 'Cerrar ambiente'))), { completa: true });
+    h('p.texto.chico', 'Se genera la CONSTANCIA DE VERIFICACIÓN FÍSICA en PDF con lo verificado en este ambiente, para imprimirla y firmarla. El ambiente queda cerrado cuando marque la constancia como FIRMADA.'),
+    h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Seguir trabajando'), h('button.btn.pri', { onclick: () => cerrar(true) }, 'Generar constancia'))), { completa: true });
   if (!ok) return;
-  await encolar('cerrarAmbiente', { ambiente_id: amb.id });
+  if (!amb.responsable) { toast('Primero indique el responsable del ambiente (toque "Responsable").', 'error', 4000); return; }
+  if (sinCodigo.length) {
+    toast('Hay sobrantes sin código S-xxx. Sincronice (necesita señal) y vuelva a generar la constancia.', 'error', 5000);
+    return;
+  }
+  if (!dniDe(amb.responsable) && !(await confirmar('Responsable sin DNI', `"${amb.responsable}" no figura en la lista del personal 2026, así que la constancia saldrá sin DNI (con espacio para escribirlo). ¿Continuar?`, { si: 'Continuar' }))) return;
+  const fecha = new Date().toISOString();
+  if (!(await bajarPdf(amb, fecha))) return;
+  await encolar('cerrarAmbiente', { ambiente_id: amb.id, ts: fecha });
+  await pasoFirma(amb);
+}
+
+async function bajarPdf(amb, fecha) {
+  try {
+    toast('Generando la constancia…', 'ok', 1500);
+    const r = await descargarConstancia(amb, fecha);
+    toast(`Constancia descargada: ${r.total} bienes, ${r.paginas} página(s)`, 'ok', 3500);
+    return true;
+  } catch (e) {
+    toast('No se pudo generar la constancia: ' + e.message, 'error', 5000);
+    return false;
+  }
+}
+
+async function pasoFirma(amb) {
+  const op = await hoja((cerrar) => h('div',
+    h('h2', 'Constancia generada'),
+    h('p.texto', 'Imprímala (A4 horizontal), hágala firmar y sellar por el responsable, el inventariador y el responsable de Patrimonio.'),
+    h('p.texto.chico', 'Si después verifica o registra algo más en este ambiente, la constancia queda desactualizada y habrá que generarla de nuevo.'),
+    h('div.botones', h('button.btn.sec', { onclick: () => cerrar('luego') }, 'Firmar después'), h('button.btn.pri', { onclick: () => cerrar('firmar') }, 'Ya está FIRMADA'))));
+  if (op === 'firmar') await marcarFirmada(amb);
+}
+
+async function marcarFirmada(amb) {
+  if (amb.constancia_estado !== 'IMPRESA') { toast('La constancia quedó desactualizada: genérela de nuevo con "Cerrar amb.".', 'error', 4500); return; }
+  if (!(await confirmar('Constancia firmada', `¿${amb.responsable} firmó y selló la constancia impresa? El ambiente quedará CERRADO.`, { si: 'Sí, cerrar ambiente' }))) return;
+  await encolar('firmarConstancia', { ambiente_id: amb.id, firmante: amb.responsable });
   S.ambienteActivo = '';
-  toast('Ambiente cerrado');
+  try { localStorage.removeItem('ambienteActivo'); } catch (e) { /* sin almacenamiento */ }
+  toast('Ambiente cerrado con constancia firmada');
   ir('#/ambientes');
 }
 

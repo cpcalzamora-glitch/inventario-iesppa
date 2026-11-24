@@ -114,17 +114,27 @@ export function ahoraISO() { return new Date().toISOString(); }
 export function aplicarOpLocal(op, usuario) {
   if (op.type === 'verificar') verificarLocal(op.bien_id, op, usuario);
   else if (op.type === 'verificarLote') op.bien_ids.forEach((id) => verificarLocal(id, op, usuario));
-  else if (op.type === 'abrirAmbiente') { const a = ambiente(op.ambiente_id); if (a && a.estado !== 'EN_CURSO') { a.estado = 'EN_CURSO'; if (!a.abierto_por) a.abierto_por = usuario; } }
-  else if (op.type === 'cerrarAmbiente') { const a = ambiente(op.ambiente_id); if (a) { a.estado = 'CERRADO'; a.cerrado_por = usuario; } }
+  else if (op.type === 'abrirAmbiente') { const a = ambiente(op.ambiente_id); if (a && a.estado !== 'EN_CURSO') { a.estado = 'EN_CURSO'; a.constancia_estado = 'PENDIENTE'; if (!a.abierto_por) a.abierto_por = usuario; } }
+  // Cierre en dos pasos: la constancia se imprime (IMPRESA) y el ambiente se cierra al marcarla FIRMADA.
+  else if (op.type === 'cerrarAmbiente') { const a = ambiente(op.ambiente_id); if (a) { a.constancia_estado = 'IMPRESA'; a.constancia_fecha = op.ts; } }
+  else if (op.type === 'firmarConstancia') { const a = ambiente(op.ambiente_id); if (a) { a.constancia_estado = 'FIRMADA'; a.constancia_firmante = op.firmante || a.responsable; a.estado = 'CERRADO'; a.cerrado_por = usuario; a.fecha_cierre = op.ts; } }
   else if (op.type === 'editarResponsableAmbiente') { const a = ambiente(op.ambiente_id); if (a) a.responsable = op.responsable; }
-  else if (op.type === 'registrarSobrante') S.sobrantesLocales.push({ op_id: op.op_id, ...op, codigos: null });
+  else if (op.type === 'registrarSobrante') { S.sobrantesLocales.push({ op_id: op.op_id, ...op, codigos: null }); constanciaDesactualizada(op.ambiente_id); }
   guardarLuego();
+}
+
+/** Si la constancia ya estaba impresa y cambia lo verificado, hay que generarla de nuevo (igual que el servidor). */
+function constanciaDesactualizada(ambId) {
+  const a = ambiente(ambId);
+  if (a && a.constancia_estado === 'IMPRESA') a.constancia_estado = 'PENDIENTE';
 }
 
 function verificarLocal(id, op, usuario) {
   const b = S.porId.get(String(id));
   if (!b) return;
   const a = ambiente(op.ambiente_id) || {};
+  constanciaDesactualizada(op.ambiente_id);
+  if (b.estado_verif === 'UBICADO' && b.ambiente_real_id && b.ambiente_real_id !== op.ambiente_id) constanciaDesactualizada(b.ambiente_real_id);
   Object.assign(b, {
     estado_verif: 'UBICADO',
     ambiente_real_id: op.ambiente_id,

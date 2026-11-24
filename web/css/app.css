@@ -139,6 +139,8 @@ input.buscar { margin-bottom: 8px; }
 
 /* Estados de conservación */
 .estados { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.constancia-pend { background: var(--amarillo-f); border-radius: 10px; padding: 8px 10px; margin: 6px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .85rem; }
+.constancia-pend .botones { margin: 0; display: flex; gap: 6px; }
 .estados.dos { grid-template-columns: repeat(2, 1fr); margin-top: 6px; }
 .estado { cursor: pointer; }
 .estados .estado { border: 2px solid var(--borde); background: #fff; border-radius: 10px; padding: 8px 2px; display: flex; flex-direction: column; align-items: center; font-size: .66rem; color: var(--suave); height: auto; }

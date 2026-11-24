@@ -2,5 +2,9 @@
   "name": "servidor-prueba-inventario",
   "private": true,
   "description": "Banco de pruebas local del backend Apps Script (solo pruebas)",
-  "dependencies": { "xlsx": "0.18.5" }
+  "dependencies": {
+    "jspdf": "2.5.1",
+    "jspdf-autotable": "3.8.2",
+    "xlsx": "0.18.5"
+  }
 }

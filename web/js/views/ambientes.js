@@ -23,7 +23,7 @@ export function vistaAmbientes() {
       return h('button.amb-item' + (a.id === S.ambienteActivo ? '.activo' : '') + (virtual ? '.virtual' : ''), {
         onclick: () => abrir(a)
       },
-      h('div.amb-item-t', h('span', a.nombre), h('span.estado.' + a.estado, virtual ? 'VIRTUAL' : a.estado.replace('_', ' '))),
+      h('div.amb-item-t', h('span', a.nombre), h('span.estado.' + a.estado, virtual ? 'VIRTUAL' : (a.estado === 'EN_CURSO' && a.constancia_estado === 'IMPRESA' ? 'POR FIRMAR' : a.estado.replace('_', ' ')))),
       h('div.amb-item-s', virtual ? 'Bienes del SIGA por buscar: se confirman al escanearlos en cualquier ambiente.' : (a.responsable || 'Responsable por definir') + (a.cambio_uso ? ' · cambio de uso' : '')),
       h('div.amb-item-c', h('div.barra', h('div', { style: `width:${pct}%` })), h('span', `${r.ubicadosEsperados}/${r.esperados}`)));
     }));
