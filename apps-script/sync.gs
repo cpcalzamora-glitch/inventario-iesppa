@@ -360,13 +360,14 @@ function opCerrarAmbiente_(ctx, op) {
 
 /**
  * Cambios desde la fila N del HISTORIAL: devuelve los bienes tocados, todos los ambientes y los sobrantes.
- * p: {desde_n}
+ * p: {desde_n, ids?}
  */
 function getCambios_(p) {
   var desde = Math.max(0, Number(p.desde_n || 0));
   var sh = hoja_('HISTORIAL');
   var total = Math.max(0, sh.getLastRow() - 1);
   var ids = {};
+  (p.ids || []).forEach(function (id) { ids[String(id)] = true; }); // bienes a releer (p. ej. tras un error)
   if (total > desde) {
     leerColumna_('HISTORIAL', 'bien_id').slice(desde).forEach(function (id) { if (id) ids[id] = true; });
   }
