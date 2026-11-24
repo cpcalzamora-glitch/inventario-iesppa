@@ -11,6 +11,7 @@ const { crearContexto } = require('./gas-shim');
 const tmp = path.join(os.tmpdir(), 'bd_prueba_fase1_' + Date.now() + '.xlsx');
 fs.copyFileSync(process.argv[2], tmp);
 const gas = crearContexto(tmp);
+gas.migrarV3(); // la copia local de la base es anterior a la v3
 const api = (p) => JSON.parse(gas.doPost({ postData: { contents: JSON.stringify(p) } }).getContent());
 let fallos = 0;
 const check = (cond, msg) => { console.log((cond ? 'OK   ' : 'FALLA') + ' ' + msg); if (!cond) fallos++; };

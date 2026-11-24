@@ -10,7 +10,11 @@ const crypto = require('crypto');
 const XLSX = require('xlsx');
 
 class Sheet {
-  constructor(name, values) { this.name = name; this.values = values; }
+  constructor(name, values) { this.name = name; this.values = values; this.maxCols = this.getLastColumn(); }
+  getMaxColumns() { return Math.max(this.maxCols, this.getLastColumn()); }
+  getMaxRows() { return Math.max(1000, this.values.length); }
+  insertColumnsAfter(c, n) { this.maxCols = this.getMaxColumns() + n; return this; }
+  setFrozenRows() { return this; }
   getLastRow() {
     for (let r = this.values.length - 1; r >= 0; r--) if (this.values[r].some(v => v !== '')) return r + 1;
     return 0;
@@ -34,6 +38,7 @@ class Range {
   }
   setValues(vals) {
     if (vals.length !== this.nr || vals.some(r => r.length !== this.nc)) throw new Error('setValues: dimensiones no coinciden');
+    if (this.col - 1 + this.nc > this.sh.getMaxColumns()) throw new Error('setValues: fuera de la cuadrícula de ' + this.sh.name + ' (como en Google Sheets)');
     for (let r = 0; r < this.nr; r++) {
       const i = this.row - 1 + r;
       while (this.sh.values.length <= i) this.sh.values.push([]);
@@ -47,6 +52,7 @@ class Range {
   }
   setValue(v) { return this.setValues([[v]]); }
   setNumberFormat() { return this; }
+  clearContent() { const v = []; for (let r = 0; r < this.nr; r++) v.push(new Array(this.nc).fill('')); return this.setValues(v); }
 }
 
 class Spreadsheet {
@@ -60,6 +66,7 @@ class Spreadsheet {
     }
   }
   getSheetByName(n) { return this.sheets[n] || null; }
+  insertSheet(n) { if (this.sheets[n]) throw new Error('Ya existe la hoja ' + n); this.sheets[n] = new Sheet(n, []); this.sheets[n].maxCols = 26; return this.sheets[n]; }
   save() {
     const wb = XLSX.utils.book_new();
     for (const n of Object.keys(this.sheets)) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(this.sheets[n].values), n);

@@ -11,17 +11,23 @@ var HOJAS = {
     'denominacion', 'marca', 'modelo', 'serie', 'color', 'dimensiones', 'ambiente_id', 'ambiente_ref',
     'ambiente_2024', 'responsable_ref', 'responsable_siga', 'estado_ref', 'obs_ref', 'apto_etiqueta',
     'estado_verif', 'ambiente_real_id', 'responsable_real', 'estado_conserv', 'etiqueta', 'foto_url',
-    'obs_campo', 'verificado_por', 'verificado_en', 'version', 'entidad_id'],
+    'obs_campo', 'verificado_por', 'verificado_en', 'version', 'entidad_id',
+    // agregadas al final en la v3 (no cambian el orden de las anteriores)
+    'destino_informe', 'situacion_especial', 'ref_declaracion', 'situacion'],
   AMBIENTES: ['id', 'nombre', 'numero', 'programa', 'ubicacion', 'responsable', 'origen', 'cambio_uso',
-    'total_esperado', 'aptos_etiqueta', 'estado', 'total_ubicado', 'abierto_por', 'cerrado_por', 'fecha_cierre'],
+    'total_esperado', 'aptos_etiqueta', 'estado', 'total_ubicado', 'abierto_por', 'cerrado_por', 'fecha_cierre',
+    'constancia_estado', 'constancia_firmante', 'constancia_fecha'],
   PERSONAL: ['n', 'nombre', 'dni', 'cargo'],
   SOBRANTES: ['cod_sobrante', 'denominacion', 'marca', 'modelo', 'serie', 'color', 'dimensiones',
     'estado_conserv', 'cantidad', 'ambiente_id', 'foto_url', 'obs', 'registrado_por', 'registrado_en', 'op_id'],
   HISTORIAL: ['fecha_hora', 'usuario', 'op_id', 'bien_id', 'accion', 'campo', 'valor_anterior', 'valor_nuevo',
     'ambiente_id', 'dispositivo'],
+  DECLARACIONES: ['id_decl', 'fecha', 'declarante', 'dni', 'cargo_periodo', 'resumen', 'foto_url', 'registrado_por',
+    'registrado_en'],
   USUARIOS: ['usuario', 'nombre', 'pin_hash', 'sal', 'rol', 'activo'],
   CONFIG: ['clave', 'valor'],
-  LISTAS: ['estado_conserv', 'estado_conserv_desc', 'estado_verif', 'etiqueta', 'tipo_codigo', 'fuente']
+  LISTAS: ['estado_conserv', 'estado_conserv_desc', 'estado_verif', 'etiqueta', 'tipo_codigo', 'fuente',
+    'situacion', 'situacion_desc', 'situacion_especial', 'destino_informe', 'constancia_estado']
 };
 
 var _ss = null;

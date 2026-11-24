@@ -21,6 +21,7 @@ if (!fs.existsSync(copia) || process.env.REINICIAR === '1') {
   fs.copyFileSync(origen, copia);
 }
 const gas = crearContexto(copia);
+gas.migrarV3(); // la copia local de la base puede ser anterior a la v3
 for (const par of (process.env.PINES_PRUEBA || '').split(',').filter(Boolean)) {
   const [u, p] = par.split(':');
   gas.setPin(u, p);
