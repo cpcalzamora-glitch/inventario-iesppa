@@ -20,7 +20,11 @@ var OPERACIONES = {
   registrarSobrante: opRegistrarSobrante_,
   editarResponsableAmbiente: opEditarResponsableAmbiente_,
   cerrarAmbiente: opCerrarAmbiente_,
-  firmarConstancia: opFirmarConstancia_
+  firmarConstancia: opFirmarConstancia_,
+  // v4 – Fase 1: corregir sin borrar (todo queda en HISTORIAL con su motivo)
+  anularVerificacion: opAnularVerificacion_,
+  anularSobrante: opAnularSobrante_,
+  reiniciarAmbiente: opReiniciarAmbiente_
 };
 
 /** Clave de agrupación para la vista por lote. Debe ser idéntica a grupoClave() del frontend. */
@@ -72,7 +76,8 @@ function cargarContexto_(sesion) {
   leerColumna_('SOBRANTES', 'op_id').forEach(function (v) { if (v) vistas[v] = true; });
   return {
     sesion: sesion, B: B, A: A, porId: porId, ambPorId: ambPorId, opsVistas: vistas,
-    bienesSucios: {}, ambSucios: {}, hist: [], sobrantes: [], config: null
+    bienesSucios: {}, ambSucios: {}, hist: [], sobrantes: [], config: null,
+    Sob: null, sobSucios: {} // hoja SOBRANTES: se lee solo si una operación la necesita
   };
 }
 
@@ -95,6 +100,11 @@ function guardarContexto_(ctx) {
     var n = Number(k);
     var fila = ctx.A.rows[n];
     ctx.A.sh.getRange(n + 2, 1, 1, ctx.A.header.length).setValues([fila.slice(0, ctx.A.header.length)]);
+  });
+  // Sobrantes anulados: solo se escribe la celda "anulado" (la fila nunca se borra).
+  Object.keys(ctx.sobSucios).forEach(function (k) {
+    var n = Number(k);
+    ctx.Sob.sh.getRange(n + 2, ctx.Sob.idx.anulado + 1).setNumberFormat('@').setValue(ctx.Sob.rows[n][ctx.Sob.idx.anulado]);
   });
   agregarFilas_('SOBRANTES', ctx.sobrantes);
   agregarFilas_('HISTORIAL', ctx.hist);
@@ -187,8 +197,21 @@ function histRow_(ctx, op, bienId, accion, campo, ant, nuevo, ambienteId) {
   ctx.hist.push({
     fecha_hora: ahora_(), usuario: ctx.sesion.usuario, op_id: op.op_id, bien_id: bienId, accion: accion,
     campo: campo, valor_anterior: ant, valor_nuevo: nuevo, ambiente_id: ambienteId || op.ambiente_id || '',
-    dispositivo: String(op.dispositivo || '').slice(0, 80)
+    dispositivo: String(op.dispositivo || '').slice(0, 80),
+    motivo: String(op.motivo || '').trim().slice(0, 200)
   });
+}
+
+function esAdmin_(ctx) { return String(ctx.sesion && ctx.sesion.rol).toUpperCase() === 'ADMIN'; }
+
+function exigirAdmin_(ctx, que) {
+  if (!esAdmin_(ctx)) throw new Error('Solo el administrador puede ' + que + '.');
+}
+
+function exigirMotivo_(op) {
+  var m = String(op.motivo || '').trim();
+  if (m.length < 3) throw new Error('Indique el motivo.');
+  return m;
 }
 
 function tsOp_(op) {
@@ -240,11 +263,18 @@ function opAbrirAmbiente_(ctx, op) {
   var amb = ambObj_(ctx, op.ambiente_id);
   if (amb.id === 'SIN_UBICAR') throw new Error('SIN UBICAR es un ambiente virtual.');
   if (amb.estado !== 'EN_CURSO') {
+    var reabrir = amb.estado === 'CERRADO';
+    if (reabrir) {
+      // v4: reabrir un ambiente cerrado (constancia firmada) solo lo hace el ADMIN y con motivo.
+      exigirAdmin_(ctx, 'reabrir un ambiente cerrado');
+      exigirMotivo_(op);
+    }
     var c = { estado: 'EN_CURSO' };
     if (!amb.abierto_por) c.abierto_por = ctx.sesion.usuario;
     // Al abrir (o reabrir) la constancia queda por generar; la firmada anterior sigue en el HISTORIAL.
+    // Lo verificado se conserva.
     c.constancia_estado = 'PENDIENTE';
-    setAmb_(ctx, amb.id, c, op, 'ABRIR_AMBIENTE');
+    setAmb_(ctx, amb.id, c, op, reabrir ? 'REABRIR_AMBIENTE' : 'ABRIR_AMBIENTE');
   }
   return { ambiente: ambObj_(ctx, amb.id) };
 }
@@ -437,9 +467,109 @@ function resumenCierre_(ctx, amb) {
     if (r[ctx.B.idx.estado_verif] === 'UBICADO' && r[ctx.B.idx.ambiente_real_id] === amb.id) ubicados++;
     else if (r[ctx.B.idx.ambiente_id] === amb.id && r[ctx.B.idx.estado_verif] !== 'UBICADO') pendientes.push(r[ctx.B.idx.id]);
   }
-  var sobr = leerColumna_('SOBRANTES', 'ambiente_id').filter(function (a) { return a === amb.id; }).length +
+  var T = sobTabla_(ctx);
+  var sobr = T.rows.filter(function (r) { return r[T.idx.ambiente_id] === amb.id && r[T.idx.anulado] !== 'SI'; }).length +
     ctx.sobrantes.filter(function (s) { return s.ambiente_id === amb.id; }).length;
   return { ubicados: ubicados, pendientes: pendientes, sobrantes: sobr };
+}
+
+/* ---------------- v4 – Fase 1: anular y reiniciar (sin borrar filas) ---------------- */
+
+function sobTabla_(ctx) {
+  if (!ctx.Sob) ctx.Sob = leerTabla_('SOBRANTES');
+  return ctx.Sob;
+}
+
+/** Ambiente donde quedó verificado el bien; no se corrige un ambiente cerrado sin reabrirlo. */
+function exigirAmbienteEditable_(ctx, ambId) {
+  if (!ambId || ctx.ambPorId[ambId] === undefined) return;
+  var a = ambObj_(ctx, ambId);
+  if (a.estado === 'CERRADO') throw new Error(a.nombre + ' está cerrado con constancia firmada. El administrador debe reabrirlo primero.');
+}
+
+/** Deja un bien como PENDIENTE. Los valores anteriores quedan en HISTORIAL (incluido quién y cuándo lo verificó). */
+function anularFila_(ctx, i, op, accion) {
+  var b = bienObj_(ctx, i);
+  if (b.verificado_por) histRow_(ctx, op, b.id, accion, 'verificado_por', b.verificado_por, '');
+  if (b.verificado_en) histRow_(ctx, op, b.id, accion, 'verificado_en', b.verificado_en, '');
+  setBien_(ctx, i, {
+    estado_verif: 'PENDIENTE', ambiente_real_id: '', responsable_real: '', estado_conserv: '', etiqueta: 'NO',
+    obs_campo: '', situacion: '', verificado_por: '', verificado_en: '', version: String(Number(b.version || 0) + 1)
+  }, op, accion);
+  return b;
+}
+
+/** op: {bien_id, motivo} */
+function opAnularVerificacion_(ctx, op) {
+  var i = ctx.porId[String(op.bien_id)];
+  if (i === undefined) throw new Error('No existe el bien ' + op.bien_id);
+  var b = bienObj_(ctx, i);
+  if (b.estado_verif !== 'UBICADO' && b.estado_verif !== 'OBSERVADO') return { bien: b, aviso: 'El bien ya estaba pendiente.' };
+  exigirMotivo_(op);
+  exigirAmbienteEditable_(ctx, b.ambiente_real_id);
+  op.ambiente_id = b.ambiente_real_id; // el HISTORIAL registra el ambiente donde estaba verificado
+  anularFila_(ctx, i, op, 'ANULAR_VERIFICACION');
+  var av = invalidarConstancia_(ctx, b.ambiente_real_id, op);
+  return { bien: bienObj_(ctx, i), aviso: av || undefined };
+}
+
+/** op: {cod_sobrante, motivo} */
+function opAnularSobrante_(ctx, op) {
+  var T = sobTabla_(ctx);
+  if (T.idx.anulado === undefined) throw new Error('Falta la columna "anulado" en SOBRANTES. Ejecute "Actualizar estructura".');
+  var cod = String(op.cod_sobrante || '').trim().toUpperCase();
+  var n = -1;
+  T.rows.forEach(function (r, k) { if (r[T.idx.cod_sobrante] === cod) n = k; });
+  if (n < 0) throw new Error('No existe el sobrante ' + cod);
+  var row = T.rows[n];
+  if (row[T.idx.anulado] === 'SI') return { cod_sobrante: cod, aviso: 'El sobrante ya estaba anulado.' };
+  exigirMotivo_(op);
+  var ambId = row[T.idx.ambiente_id];
+  exigirAmbienteEditable_(ctx, ambId);
+  anularSobFila_(ctx, n, op, 'ANULAR_SOBRANTE');
+  var av = invalidarConstancia_(ctx, ambId, op);
+  return { cod_sobrante: cod, ambiente_id: ambId, aviso: av || undefined };
+}
+
+function anularSobFila_(ctx, n, op, accion) {
+  var T = ctx.Sob;
+  var row = T.rows[n];
+  while (row.length < T.header.length) row.push('');
+  histRow_(ctx, op, row[T.idx.cod_sobrante], accion, 'sobrante.anulado', row[T.idx.anulado] || '', 'SI', row[T.idx.ambiente_id]);
+  row[T.idx.anulado] = 'SI';
+  ctx.sobSucios[n] = true;
+}
+
+/**
+ * Reiniciar ambiente (solo ADMIN, para pruebas): todos los bienes verificados en él vuelven a PENDIENTE,
+ * sus sobrantes quedan anulados y el ambiente vuelve a PENDIENTE. Cada valor anterior queda en HISTORIAL.
+ * op: {ambiente_id, motivo}
+ */
+function opReiniciarAmbiente_(ctx, op) {
+  exigirAdmin_(ctx, 'reiniciar un ambiente');
+  exigirMotivo_(op);
+  var amb = ambObj_(ctx, op.ambiente_id);
+  if (amb.id === 'SIN_UBICAR') throw new Error('SIN UBICAR es un ambiente virtual.');
+  var bienes = 0;
+  for (var k = 0; k < ctx.B.rows.length; k++) {
+    var r = ctx.B.rows[k];
+    var ev = r[ctx.B.idx.estado_verif];
+    if (r[ctx.B.idx.ambiente_real_id] === amb.id && (ev === 'UBICADO' || ev === 'OBSERVADO')) {
+      anularFila_(ctx, k, op, 'REINICIAR_AMBIENTE');
+      bienes++;
+    }
+  }
+  var sobr = 0;
+  var T = sobTabla_(ctx);
+  if (T.idx.anulado === undefined) throw new Error('Falta la columna "anulado" en SOBRANTES. Ejecute "Actualizar estructura".');
+  T.rows.forEach(function (row, n) {
+    if (row[T.idx.ambiente_id] === amb.id && row[T.idx.anulado] !== 'SI') { anularSobFila_(ctx, n, op, 'REINICIAR_AMBIENTE'); sobr++; }
+  });
+  setAmb_(ctx, amb.id, {
+    estado: 'PENDIENTE', total_ubicado: '0', abierto_por: '', cerrado_por: '', fecha_cierre: '',
+    constancia_estado: 'PENDIENTE', constancia_firmante: '', constancia_fecha: ''
+  }, op, 'REINICIAR_AMBIENTE');
+  return { ambiente: ambObj_(ctx, amb.id), bienes_reiniciados: bienes, sobrantes_anulados: sobr };
 }
 
 /* ---------------- lecturas incrementales ---------------- */

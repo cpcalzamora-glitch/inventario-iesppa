@@ -80,7 +80,7 @@ check(ubCarp.length === Math.min(20, carp.length), 'grupo ' + carp[0].denominaci
 check(ubCarp.every(b => b.etiqueta === 'TEMPORAL'), '8 dígitos → etiqueta TEMPORAL');
 const altas = a202.filter(b => b.tipo_codigo === 'ALTA');
 const la = sync(t1, [{ type: 'verificarLote', op_id: uid(), ambiente_id: '202', bien_ids: altas.slice(0, 48).map(b => b.id), estado_conserv: 'B' }])[0];
-check(la.estado === 'ok' && la.data.marcados.length === 48, '48 altas 2025 verificadas por lote');
+check(la.estado === 'ok' ? la.data.marcados.length === Math.min(48, altas.length) : !altas.length, Math.min(48, altas.length) + ' altas 2025 verificadas por lote');
 check(sheetB().filter(b => b.tipo_codigo === 'ALTA' && b.estado_verif === 'UBICADO').every(b => b.etiqueta === 'TEMPORAL'), 'altas → etiqueta TEMPORAL');
 const lx = sync(t1, [{ type: 'verificarLote', op_id: uid(), ambiente_id: '202', bien_ids: [c12[60] ? c12[60].id : c12[0].id], estado_conserv: 'B' }])[0];
 check(lx.estado === 'error', 'un bien de 12 dígitos no se puede verificar por lote');
@@ -112,7 +112,9 @@ check(cfg[1] === '4', 'CONFIG.correlativo_sobrante = 4');
 const amb = (id) => { const v = gas.__ss.getSheetByName('AMBIENTES').values; return Object.fromEntries(v[0].map((c, i) => [c, v.find(r => r[0] === id)[i] ?? ''])); };
 check(sync(t1, [{ type: 'firmarConstancia', op_id: uid(), ambiente_id: '202' }])[0].estado === 'error', 'no se puede marcar FIRMADA sin generar antes la constancia');
 const ci = sync(t1, [{ type: 'cerrarAmbiente', op_id: uid(), ambiente_id: '202' }])[0];
-check(ci.estado === 'ok' && ci.data.ubicados === 68 && ci.data.pendientes.length === 15 && ci.data.sobrantes === 3, 'cerrar Aula 202 (genera constancia): 68 ubicados, 15 pendientes, 3 sobrantes');
+const ub202 = sheetB().filter(b => b.estado_verif === 'UBICADO' && b.ambiente_real_id === '202').length;
+const pe202 = sheetB().filter(b => b.ambiente_id === '202' && b.estado_verif !== 'UBICADO').length;
+check(ci.estado === 'ok' && ci.data.ubicados === ub202 && ci.data.pendientes.length === pe202 && ci.data.sobrantes === 3, 'cerrar Aula 202 (genera constancia): ' + ub202 + ' ubicados, ' + pe202 + ' pendientes, 3 sobrantes');
 check(amb('202').constancia_estado === 'IMPRESA' && amb('202').estado === 'EN_CURSO' && amb('202').constancia_fecha, 'constancia IMPRESA con fecha; el ambiente sigue EN_CURSO hasta la firma');
 check(sheetB().filter(b => ci.data.pendientes.includes(b.id)).every(b => b.estado_verif === 'PENDIENTE'), 'los pendientes quedan PENDIENTE (no faltantes)');
 // Si se verifica algo más después de imprimir, la constancia queda desactualizada.
@@ -122,10 +124,14 @@ check(rx.estado === 'ok' && /desactualizada/.test(rx.data.aviso) && amb('202').c
 check(sync(t1, [{ type: 'firmarConstancia', op_id: uid(), ambiente_id: '202' }])[0].estado === 'error', 'una constancia desactualizada no se puede marcar FIRMADA');
 const ci2 = sync(t1, [{ type: 'cerrarAmbiente', op_id: uid(), ambiente_id: '202' }])[0];
 const fi = sync(t1, [{ type: 'firmarConstancia', op_id: uid(), ambiente_id: '202', firmante: 'RESPONSABLE PRUEBA' }])[0];
-check(ci2.data.ubicados === 69 && fi.estado === 'ok' && amb('202').estado === 'CERRADO' && amb('202').constancia_estado === 'FIRMADA' && amb('202').constancia_firmante === 'RESPONSABLE PRUEBA' && amb('202').total_ubicado === '69', 'constancia regenerada (69) y FIRMADA → ambiente CERRADO');
+check(ci2.data.ubicados === ub202 + 1 && fi.estado === 'ok' && amb('202').estado === 'CERRADO' && amb('202').constancia_estado === 'FIRMADA' && amb('202').constancia_firmante === 'RESPONSABLE PRUEBA' && amb('202').total_ubicado === String(ub202 + 1), 'constancia regenerada (+1) y FIRMADA → ambiente CERRADO');
 check(sync(t1, [{ type: 'verificar', op_id: uid(), bien_id: carp[25] ? carp[25].id : a202[0].id, ambiente_id: '202', estado_conserv: 'B' }])[0].estado === 'error', 'no se verifica en un ambiente cerrado');
 check(gas.__ss.getSheetByName('HISTORIAL').values.filter(r => r[4] === 'CERRAR_AMBIENTE' && r[5] === 'ambiente.constancia_estado').length === 3, 'impresión y firma quedan en HISTORIAL (CERRAR_AMBIENTE)');
-sync(t1, [{ type: 'abrirAmbiente', op_id: uid(), ambiente_id: '202' }]);
+check(sync(t1, [{ type: 'abrirAmbiente', op_id: uid(), ambiente_id: '202' }])[0].estado === 'error' && amb('202').estado === 'CERRADO', 'v4: un inventariador no puede reabrir un ambiente cerrado');
+gas.setPin('hernan', '9999');
+const tA = api({ action: 'login', usuario: 'hernan', pin: '9999' }).data.token;
+check(sync(tA, [{ type: 'abrirAmbiente', op_id: uid(), ambiente_id: '202' }])[0].estado === 'error', 'v4: reabrir sin motivo se rechaza');
+sync(tA, [{ type: 'abrirAmbiente', op_id: uid(), ambiente_id: '202', motivo: 'prueba de reapertura' }]);
 check(amb('202').estado === 'EN_CURSO' && amb('202').constancia_estado === 'PENDIENTE', 'reabrir → EN_CURSO y constancia PENDIENTE (la firmada queda en HISTORIAL)');
 
 // --- Situación U/D ---

@@ -19,9 +19,10 @@ var HOJAS = {
     'constancia_estado', 'constancia_firmante', 'constancia_fecha'],
   PERSONAL: ['n', 'nombre', 'dni', 'cargo'],
   SOBRANTES: ['cod_sobrante', 'denominacion', 'marca', 'modelo', 'serie', 'color', 'dimensiones',
-    'estado_conserv', 'cantidad', 'ambiente_id', 'foto_url', 'obs', 'registrado_por', 'registrado_en', 'op_id'],
+    'estado_conserv', 'cantidad', 'ambiente_id', 'foto_url', 'obs', 'registrado_por', 'registrado_en', 'op_id',
+    'anulado'], // agregada al final en la v4 (SI = sobrante anulado; la fila nunca se borra)
   HISTORIAL: ['fecha_hora', 'usuario', 'op_id', 'bien_id', 'accion', 'campo', 'valor_anterior', 'valor_nuevo',
-    'ambiente_id', 'dispositivo'],
+    'ambiente_id', 'dispositivo', 'motivo'], // motivo: agregada al final en la v4
   DECLARACIONES: ['id_decl', 'fecha', 'declarante', 'dni', 'cargo_periodo', 'resumen', 'foto_url', 'registrado_por',
     'registrado_en'],
   USUARIOS: ['usuario', 'nombre', 'pin_hash', 'sal', 'rol', 'activo'],

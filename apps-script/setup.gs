@@ -6,7 +6,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Inventario App')
     .addItem('Asignar PIN a un usuario', 'menuAsignarPin')
     .addItem('Verificar estructura', 'menuVerificarEstructura')
-    .addItem('Actualizar estructura a la v3', 'menuMigrarV3')
+    .addItem('Actualizar estructura (v3 y v4)', 'menuMigrarV3')
     .addToUi();
 }
 
@@ -118,6 +118,9 @@ function migrarV3() {
   var log = [];
   asegurarColumnas_('BIENES', HOJAS.BIENES, log);
   asegurarColumnas_('AMBIENTES', HOJAS.AMBIENTES, log);
+  // v4: motivo en HISTORIAL y marca de anulado en SOBRANTES (solo se agregan al final).
+  asegurarColumnas_('HISTORIAL', HOJAS.HISTORIAL, log);
+  asegurarColumnas_('SOBRANTES', HOJAS.SOBRANTES, log);
   if (!ss_().getSheetByName('DECLARACIONES')) {
     var sh = ss_().insertSheet('DECLARACIONES');
     sh.getRange(1, 1, 1, HOJAS.DECLARACIONES.length).setValues([HOJAS.DECLARACIONES]);
