@@ -71,6 +71,8 @@ function procesarResultado(op, r) {
     aviso(`No se pudo registrar (${op.type}): ${r.error}`);
     if (op.bien_id) idsReleer.add(String(op.bien_id));
     (op.bien_ids || []).forEach((id) => idsReleer.add(String(id)));
+    // Bienes que el celular cambió por su cuenta al encolar (reinicio, recálculos, conciliación): se releen del servidor.
+    (op.afectados || []).forEach((id) => idsReleer.add(String(id)));
     if (op.type === 'registrarSobrante') S.sobrantesLocales = S.sobrantesLocales.filter((x) => x.op_id !== op.op_id);
   }
 }
@@ -82,6 +84,7 @@ export async function sincronizar() {
   S.sincronizando = true;
   notificar();
   clearTimeout(tReintento);
+  tReintento = null;
   try {
     for (;;) {
       const ops = await colaTodas();
@@ -100,15 +103,23 @@ export async function sincronizar() {
     await refrescar();
   } catch (e) {
     if (e.codigo === 'AUTH') { alPerderSesion(); }
-    else { S.enLinea = false; tReintento = setTimeout(sincronizar, CONFIG.REINTENTO_MS); }
+    else if (e.codigo === 'SERVIDOR') {
+      // Hay señal pero el servidor rechazó el envío completo (p. ej. estructura de la hoja desactualizada):
+      // no es "sin conexión"; se avisa una vez y se reintenta más espaciado. La cola se conserva.
+      S.enLinea = true;
+      const t = 'El servidor no aceptó la sincronización: ' + e.message;
+      if (!S.avisos.length || S.avisos[S.avisos.length - 1].texto !== t) aviso(t);
+      tReintento = setTimeout(sincronizar, CONFIG.REINTENTO_MS * 4);
+    } else { S.enLinea = false; tReintento = setTimeout(sincronizar, CONFIG.REINTENTO_MS); }
   } finally {
     corriendo = false;
     S.sincronizando = false;
     S.pendientes = (await colaTodas()).length;
     guardarLuego();
     notificar();
-    // Una operación encolada justo cuando terminaba esta vuelta no debe esperar a la siguiente acción.
-    if (S.pendientes && S.enLinea && S.sesion) setTimeout(sincronizar, 300);
+    // Una operación encolada justo cuando terminaba esta vuelta no debe esperar a la siguiente acción
+    // (salvo que ya haya un reintento programado por error).
+    if (S.pendientes && S.enLinea && S.sesion && !tReintento) setTimeout(sincronizar, 300);
   }
 }
 
@@ -116,11 +127,18 @@ export async function sincronizar() {
 export async function refrescar() {
   const pend = await colaTodas();
   const ocupados = new Set();
-  pend.forEach((op) => { if (op.bien_id) ocupados.add(String(op.bien_id)); (op.bien_ids || []).forEach((id) => ocupados.add(String(id))); });
-  const ambOcupados = new Set(pend.filter((o) => /Ambiente/.test(o.type)).map((o) => o.ambiente_id));
-  const d = await llamar('getCambios', { desde_n: S.historial_n, ids: [...idsReleer] });
-  idsReleer = new Set();
-  aplicarFilasServidor(d.bienes, ocupados);
+  pend.forEach((op) => {
+    if (op.bien_id) ocupados.add(String(op.bien_id));
+    (op.bien_ids || []).forEach((id) => ocupados.add(String(id)));
+    (op.afectados || []).forEach((id) => ocupados.add(String(id)));
+  });
+  // Cualquier operación pendiente que toque un ambiente (abrir, cerrar, firmar, anular, reiniciar…) protege
+  // su estado local hasta que el servidor la procese.
+  const ambOcupados = new Set(pend.map((o) => o.ambiente_id).filter(Boolean));
+  const releer = [...idsReleer];
+  const d = await llamar('getCambios', { desde_n: S.historial_n, ids: releer });
+  releer.forEach((id) => idsReleer.delete(id));
+  aplicarFilasServidor(d.bienes, ocupados, d.columnas);
   d.ambientes.forEach((a) => {
     if (ambOcupados.has(a.id)) return;
     const loc = S.ambientes.find((x) => x.id === a.id);

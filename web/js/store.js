@@ -63,20 +63,27 @@ export function cargarBase(d) {
 }
 
 /** Aplica filas de bienes que vienen del servidor (getCambios). */
-export function aplicarFilasServidor(filas, omitir = new Set()) {
+export function aplicarFilasServidor(filas, omitir = new Set(), columnas = null) {
+  // Las filas se leen con las columnas que manda el servidor: si BIENES ganó columnas, no se pierden ni se corren.
+  const cols = columnas || S.cols;
+  let reindexar = false;
   for (const f of filas) {
-    const o = Object.fromEntries(S.cols.map((c, i) => [c, String(f[i] ?? '')]));
+    const o = Object.fromEntries(cols.map((c, i) => [c, String(f[i] ?? '')]).filter(([c]) => c));
     if (omitir.has(o.id)) continue;
-    aplicarBien(o);
+    reindexar = aplicarBien(o, false) || reindexar;
   }
+  if (reindexar) indexar();
 }
 
-export function aplicarBien(o) {
+/** Aplica un bien del servidor. Devuelve true si cambió algo que obliga a reindexar. */
+export function aplicarBien(o, indexarYa = true) {
   const b = S.porId.get(String(o.id));
-  if (!b) return;
-  const reindexar = (o.cod_patrimonial !== undefined && o.cod_patrimonial !== b.cod_patrimonial) || (o.conciliado_con !== undefined && o.conciliado_con !== b.conciliado_con);
+  if (!b) return false;
+  for (const k of Object.keys(o)) if (k && !S.cols.includes(k)) S.cols.push(k); // columna nueva: se guarda también en el celular
+  const reindexar = (o.cod_patrimonial !== undefined && o.cod_patrimonial !== b.cod_patrimonial) || (o.conciliado_con !== undefined && (o.conciliado_con || '') !== (b.conciliado_con || ''));
   Object.assign(b, o);
-  if (reindexar) indexar();
+  if (reindexar && indexarYa) indexar();
+  return reindexar;
 }
 
 export function ambiente(id) { return S.ambientes.find((a) => a.id === id); }
@@ -129,7 +136,8 @@ export function aplicarOpLocal(op, usuario) {
   else if (op.type === 'anularVerificacion') { const b = S.porId.get(String(op.bien_id)); if (b) { constanciaDesactualizada(b.ambiente_real_id); anularLocal(b); } }
   else if (op.type === 'anularSobrante') { const s = S.sobrantes.find((x) => x.cod_sobrante === op.cod_sobrante); if (s) { s.anulado = 'SI'; constanciaDesactualizada(s.ambiente_id); } }
   else if (op.type === 'reiniciarAmbiente') {
-    S.bienes.forEach((b) => { if (b.ambiente_real_id === op.ambiente_id && (b.estado_verif === 'UBICADO' || b.estado_verif === 'OBSERVADO')) anularLocal(b); });
+    op.afectados = [];
+    S.bienes.forEach((b) => { if (b.ambiente_real_id === op.ambiente_id && (b.estado_verif === 'UBICADO' || b.estado_verif === 'OBSERVADO')) { op.afectados.push(b.id); anularLocal(b); } });
     S.sobrantes.forEach((s) => { if (s.ambiente_id === op.ambiente_id) s.anulado = 'SI'; });
     const a = ambiente(op.ambiente_id);
     if (a) Object.assign(a, { estado: 'PENDIENTE', total_ubicado: '0', abierto_por: '', cerrado_por: '', fecha_cierre: '', constancia_estado: 'PENDIENTE', constancia_firmante: '', constancia_fecha: '' });
@@ -234,9 +242,11 @@ function editarLocal(op) {
   if (!b) return;
   const antes = { ...b };
   for (const [k, v] of Object.entries(op.cambios || {})) b[k] = normalizarCampo(k, v);
-  if (op.cambios.ambiente_real_id) b.responsable_real = (ambiente(b.ambiente_real_id) || {}).responsable || '';
+  if ((op.cambios || {}).ambiente_real_id) b.responsable_real = (ambiente(b.ambiente_real_id) || {}).responsable || '';
   b.version = String(Number(b.version || 0) + 1);
   const codigos = new Set([antes.cod_patrimonial, b.cod_patrimonial].filter(Boolean));
+  // Vecinos que se recalculan aquí: si el servidor rechaza la edición, se releen (ver cola.js).
+  op.afectados = S.todos.filter((x) => x !== b && codigos.has(x.cod_patrimonial)).map((x) => x.id);
   const cambiaCod = antes.cod_patrimonial !== b.cod_patrimonial || antes.tipo_codigo !== b.tipo_codigo;
   for (const x of S.todos) {
     if (x === b) continue;
