@@ -66,9 +66,11 @@ export function vistaAmbiente(id) {
     h('button.btn.pri.grande', { onclick: () => abrirEscaner() }, '▣ Escanear'),
     h('button.btn.sec', { onclick: () => cerrarAmbiente(amb) }, 'Cerrar amb.'));
   if (amb.estado === 'CERRADO') {
-    pie.replaceChildren(esAdmin()
+    // Ambiente cerrado: solo consulta. Se puede volver a descargar la constancia firmada (con su fecha de cierre).
+    const pdf = amb.constancia_estado === 'FIRMADA' ? h('button.btn.sec', { onclick: () => bajarPdf(amb, amb.constancia_fecha || amb.fecha_cierre) }, 'Constancia PDF') : null;
+    pie.replaceChildren(pdf, esAdmin()
       ? h('button.btn.pri.grande', { onclick: async () => { if (await reabrir(amb)) ir('#/amb/' + encodeURIComponent(amb.id)); } }, 'Reabrir ambiente')
-      : h('p.texto.chico', 'Ambiente cerrado con constancia firmada. Solo el administrador puede reabrirlo.'));
+      : h('p.texto.chico', 'Cerrado con constancia firmada. Solo el administrador puede reabrirlo.'));
   }
 
   raiz.append(cabecera, cuerpo, pie);
@@ -128,6 +130,7 @@ function listaLotes(id, tipo, repintar) {
   const gs = grupos(id, tipo);
   if (!gs.length) return h('p.vacio', tipo === 'ALTA' ? 'No hay altas 2025 en este ambiente.' : 'No hay bienes sin código de 12 dígitos en este ambiente.');
   const amb = ambiente(id);
+  const cerrado = amb.estado === 'CERRADO'; // solo consulta: no se cuenta ni se marca
   return h('div.lista', h('p.ayuda', 'Cuente los bienes iguales, elija el estado y confirme. Llevan etiqueta TEMPORAL con el número de referencia que muestra la app.'),
     gs.map(([k, filas]) => {
       const pend = filas.filter((b) => b.estado_verif !== 'UBICADO');
@@ -155,7 +158,7 @@ function listaLotes(id, tipo, repintar) {
         h('div.grupo-t', b0.denominacion),
         h('div.grupo-s', [b0.color, b0.marca, b0.modelo, b0.dimensiones].filter((x) => x && x !== 'S.M.' && x !== 'S/M').join(' · ')),
         h('div.grupo-c', `Esperadas ${filas.length} · Ubicadas `, h('b', ubic), ` · Pendientes ${pend.length}`),
-        pend.length || n ? h('div.grupo-acc',
+        !cerrado && (pend.length || n) ? h('div.grupo-acc',
           h('div.stepper',
             h('button', { onclick: () => { conteos[k] = Math.max(0, n - 1); repintar(); } }, '−'),
             valor,
@@ -165,12 +168,12 @@ function listaLotes(id, tipo, repintar) {
         n ? selectorSituacion(situacionGrupo[k] || 'U', (v) => { situacionGrupo[k] = v; }) : null,
         exceso ? h('div.banda.amarilla', `Contó ${exceso} más de las esperadas.`,
           h('button.btn.sec.chico', { onclick: () => abrirSobrante({ denominacion: b0.denominacion, marca: b0.marca, modelo: b0.modelo, color: b0.color, dimensiones: b0.dimensiones, cantidad: exceso, estado_conserv: estadosGrupo[k] }) }, `Registrar ${exceso} sobrante(s)`)) : null,
-        n && pend.length ? h('button.btn.pri', { onclick: confirmarN }, `Confirmar ${Math.min(n, pend.length)} ubicada(s)`) : null,
+        !cerrado && n && pend.length ? h('button.btn.pri', { onclick: confirmarN }, `Confirmar ${Math.min(n, pend.length)} ubicada(s)`) : null,
         h('button.desplegar', { onclick: () => { abiertos.has(k) ? abiertos.delete(k) : abiertos.add(k); repintar(); } }, abiertos.has(k) ? 'Ocultar detalle ▲' : 'Ver uno por uno ▼'),
         abiertos.has(k) ? h('div.filas', filas.map((b) => h('div.fila' + (b.estado_verif === 'UBICADO' ? '.hecho' : ''),
           h('span.ref', b.tipo_codigo === 'ALTA' ? b.cod_interno : 'Ref. ' + b.cod_interno),
           h('span.det', b.estado_verif === 'UBICADO' ? `✓ ${b.estado_conserv} · ${b.verificado_por}` : `Pendiente · ant. ${b.estado_ref || '—'}${b.serie && b.serie !== 'S.S.' ? ' · S/' + b.serie : ''}`),
-          b.estado_verif === 'UBICADO' ? (b.ambiente_real_id === id && amb.estado !== 'CERRADO' ? h('button.btn.sec.chico', { onclick: () => anularVerificacion(b) }, 'Anular') : null) : h('button.btn.sec.chico', {
+          cerrado ? null : b.estado_verif === 'UBICADO' ? (b.ambiente_real_id === id ? h('button.btn.sec.chico', { onclick: () => anularVerificacion(b) }, 'Anular') : null) : h('button.btn.sec.chico', {
             onclick: async () => {
               await encolar('verificarLote', { ambiente_id: id, bien_ids: [b.id], estado_conserv: estadosGrupo[k], situacion: situacionGrupo[k] || 'U', responsable: amb.responsable });
               toast(`✓ ${b.cod_interno} ubicada · etiqueta TEMPORAL`);

@@ -6,6 +6,7 @@ import { h, hoja, toast, selectorEstado } from '../ui.js';
 export function abrirSobrante(pre = {}) {
   const amb = ambiente(S.ambienteActivo);
   if (!amb) { toast('Primero abra un ambiente.', 'error'); return Promise.resolve(); }
+  if (amb.estado === 'CERRADO') { toast(amb.nombre + ' está cerrado. El administrador debe reabrirlo para registrar sobrantes.', 'error', 4500); return Promise.resolve(); }
   const d = { denominacion: '', marca: '', modelo: '', serie: '', color: '', dimensiones: '', estado_conserv: 'B', cantidad: 1, obs: '', ...pre };
   const denoms = [...new Set(S.bienes.map((b) => b.denominacion))].sort();
   const campo = (k, etiqueta, extra = {}) => h('label.campo', h('span', etiqueta),

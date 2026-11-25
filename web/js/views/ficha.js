@@ -16,7 +16,8 @@ const NOMBRES = {
 /** Ficha completa del bien. Desde aquí el ADMIN puede editarla. */
 export function fichaBien(b) {
   return hoja((cerrar) => {
-    const activo = ambiente(S.ambienteActivo);
+    const amb = ambiente(S.ambienteActivo);
+    const activo = amb && amb.estado !== 'CERRADO' ? amb : null; // en un ambiente cerrado no se verifica
     const hist = h('div.historial', h('button.btn.sec.chico', { onclick: () => cargarHistorial(b, hist) }, 'Ver historial del bien'));
     return h('div',
       h('div.ficha',

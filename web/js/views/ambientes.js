@@ -2,7 +2,6 @@
 import { S, resumenAmbiente, suscribir } from '../store.js';
 import { encolar } from '../cola.js';
 import { h } from '../ui.js';
-import { reabrir } from './ambiente.js';
 import { ir } from '../app.js';
 
 let filtro = 'TODOS';
@@ -42,8 +41,8 @@ async function abrir(a) {
     ir('#/buscar?amb=SIN_UBICAR');
     return;
   }
-  if (a.estado === 'CERRADO') { if (!(await reabrir(a))) return; }
-  else if (a.estado !== 'EN_CURSO') await encolar('abrirAmbiente', { ambiente_id: a.id });
+  // Un ambiente cerrado se abre solo para consultar (y el ADMIN puede reabrirlo desde ahí).
+  if (a.estado !== 'EN_CURSO' && a.estado !== 'CERRADO') await encolar('abrirAmbiente', { ambiente_id: a.id });
   S.ambienteActivo = a.id;
   try { localStorage.setItem('ambienteActivo', a.id); } catch (e) { /* sin almacenamiento */ }
   ir('#/amb/' + encodeURIComponent(a.id));

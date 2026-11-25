@@ -9,6 +9,7 @@ import { abrirSobrante } from './sobrante.js';
 export async function procesarCodigo(codigo) {
   const amb = ambiente(S.ambienteActivo);
   if (!amb) { toast('Primero abra un ambiente.', 'error'); return; }
+  if (amb.estado === 'CERRADO') { beep(false); toast(amb.nombre + ' está cerrado con constancia firmada. Para verificar, el administrador debe reabrirlo.', 'error', 4500); return; }
   const lista = S.porCodigo.get(codigo) || [];
   // Solo existen códigos de 8 o 12 dígitos: otra longitud se avisa y no se asume (ni se completa ni se recorta).
   if (/^\d+$/.test(codigo) && codigo.length !== 8 && codigo.length !== 12) { beep(false); return longitudInvalida(codigo, lista); }
@@ -63,8 +64,10 @@ function elegirDuplicado(codigo, filas) {
 }
 
 /** Ficha breve con estado y botón Confirmar. */
-export function fichaVerificar(b) {
+export async function fichaVerificar(b) {
   const amb = ambiente(S.ambienteActivo);
+  // Sin ambiente abierto, o cerrado: solo se muestra la ficha (no se puede verificar).
+  if (!amb || amb.estado === 'CERRADO') { const { fichaBien } = await import('./ficha.js'); return fichaBien(b); }
   let estado = b.estado_conserv || b.estado_ref || 'B';
   let situacion = b.situacion || 'U';
   const referido = b.situacion_especial === REFERIDO

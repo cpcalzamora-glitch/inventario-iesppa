@@ -33,7 +33,7 @@ export async function abrirEscaner() {
       h('button.icono.blanco', { onclick: cerrar, title: 'Cerrar' }, '✕'),
       h('div.esc-amb', amb.nombre),
       contador,
-      h('button.icono.blanco', { title: 'Linterna', onclick: async () => { luz = !luz; if (!(await esc.linterna(luz))) toast('Este celular no permite usar la linterna aquí.', 'error'); } }, '🔦')),
+      h('button.icono.blanco', { title: 'Linterna', onclick: async () => { if (!esc) return; luz = !luz; if (!(await esc.linterna(luz))) toast('Este celular no permite usar la linterna aquí.', 'error'); } }, '🔦')),
     h('div#lector-camara'),
     h('div.esc-guia', 'Apunte al código de barras o al QR de la etiqueta'),
     manual);
