@@ -37,6 +37,11 @@ tools/
 - **Dos informes:** el **informe DREP** trae solo los bienes de 12 dígitos (`destino_informe = DREP+INTERNO`); el **informe interno** trae **todos** los bienes (12 y 8 dígitos, altas 2025, sin código) más los sobrantes. `destino_informe` (columna AG) tiene valores fijos, ya no es fórmula. Las exportaciones se hacen en la Fase 2.
 - **Constancia por ambiente:** al cerrar el ambiente la app genera la **constancia de verificación física** en PDF (A4 horizontal, tablas de 806 pt, encabezado, 3 firmas con sello) solo con lo verificado: bienes ubicados en el ambiente y sus sobrantes. El ambiente queda **CERRADO** recién cuando se marca la constancia como **FIRMADA**. Si después de imprimirla se verifica algo más en ese ambiente, la constancia vuelve a PENDIENTE y hay que generarla de nuevo. Nunca se generan por lote ni por adelantado.
 - **Bienes referidos como entregados sin baja (2c):** si se escanea un bien marcado `REFERIDO_ENTREGADO_SIN_BAJA`, la app avisa; al confirmarlo se quita la marca (HISTORIAL `QUITAR_REFERIDO`) y se conserva la declaración. Los que no aparecen siguen PENDIENTE. La app solo documenta: no da de baja ni declara faltantes en campo.
+- **Corregir sin borrar (v4):** todo se corrige con un **motivo** que va a `HISTORIAL.motivo` junto con el usuario y el valor anterior.
+  - **Reabrir ambiente:** solo el ADMIN reabre un ambiente CERRADO (constancia firmada). Vuelve a EN CURSO, conserva lo verificado y la constancia queda por generar de nuevo.
+  - **Anular verificación:** cualquier usuario devuelve un bien a PENDIENTE desde su ficha (o con **Anular** en la vista por lote). No se puede si el ambiente está cerrado.
+  - **Anular sobrante:** el sobrante queda con `SOBRANTES.anulado = SI`. La fila se conserva y deja de contar en la constancia y en el cierre.
+  - **Reiniciar ambiente:** solo el ADMIN, con doble confirmación (escribir REINICIAR). Devuelve todos los bienes verificados en el ambiente a PENDIENTE, anula sus sobrantes y deja el ambiente en PENDIENTE. Es para pruebas.
 - **Sesión:** usuario y PIN, con el PIN guardado como SHA-256 con sal. El token dura 7 días. Tras 5 intentos fallidos, el usuario queda bloqueado 10 minutos. Para bloquear a alguien, ponga `activo = NO` en `USUARIOS`.
 
 ## API
@@ -56,6 +61,10 @@ Una sola URL (`…/exec`). Se llama con `POST`, `Content-Type: text/plain` y el 
 | `verificarLote` | `op_id, ambiente_id, bien_ids[], estado_conserv, situacion?` | `marcados[], reemplazos, sin_reemplazo` |
 | `registrarSobrante` | `op_id, ambiente_id, denominacion, …, estado_conserv, cantidad` | `codigos[]` |
 | `editarResponsableAmbiente` | `op_id, ambiente_id, responsable` | ambiente |
+| `abrirAmbiente` (reabrir) | `op_id, ambiente_id, motivo` | si estaba CERRADO: solo ADMIN y con motivo (`REABRIR_AMBIENTE`) |
+| `anularVerificacion` | `op_id, bien_id, motivo` | `bien` en PENDIENTE; los valores anteriores quedan en el HISTORIAL |
+| `anularSobrante` | `op_id, cod_sobrante, motivo` | `SOBRANTES.anulado = SI` |
+| `reiniciarAmbiente` | `op_id, ambiente_id, motivo` | solo ADMIN: `bienes_reiniciados, sobrantes_anulados` |
 
 `GET ?action=ping` solo devuelve conteos, sin datos de bienes, para comprobar que el servicio está vivo.
 
@@ -67,7 +76,7 @@ clasp no funciona con esta cuenta porque Google solo le concede los permisos de 
 2. En el Sheet, abra **Extensiones → Apps Script** y entre a `Código.gs`.
 3. Seleccione todo con **Ctrl+A**, pegue el contenido nuevo y guarde con **Ctrl+S**.
 4. La primera vez, entre a **⚙ Configuración del proyecto** y ponga la zona horaria en **(GMT-05:00) Lima**.
-5. Ejecute `verificarEstructura` para revisar el resultado en el registro. Si el Sheet no tiene aún la estructura v3, use el menú **Inventario App → Actualizar estructura a la v3** (`migrarV3`): agrega al final las columnas nuevas y la hoja `DECLARACIONES`, sin mover ni borrar nada. Se puede ejecutar varias veces.
+5. Ejecute `verificarEstructura` para revisar el resultado en el registro. Si el Sheet no tiene aún la estructura v3, use el menú **Inventario App → Actualizar estructura (v3 y v4)** (`migrarV3`): agrega al final las columnas nuevas (también `HISTORIAL.motivo` y `SOBRANTES.anulado`) y la hoja `DECLARACIONES`, sin mover ni borrar nada. Se puede ejecutar varias veces.
 6. Entre a **Implementar → Gestionar implementaciones → ✏ (editar)**:
    - **Versión:** *Nueva versión*
    - **Ejecutar como:** *Yo*
@@ -116,6 +125,7 @@ npm install
 node prueba-fase0.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v3-estructura.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
+node prueba-v4-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-constancia.mjs "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx" constancia.pdf
 ```
 
