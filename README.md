@@ -42,6 +42,10 @@ tools/
   - **Anular verificación:** cualquier usuario devuelve un bien a PENDIENTE desde su ficha (o con **Anular** en la vista por lote). No se puede si el ambiente está cerrado.
   - **Anular sobrante:** el sobrante queda con `SOBRANTES.anulado = SI`. La fila se conserva y deja de contar en la constancia y en el cierre.
   - **Reiniciar ambiente:** solo el ADMIN, con doble confirmación (escribir REINICIAR). Devuelve todos los bienes verificados en el ambiente a PENDIENTE, anula sus sobrantes y deja el ambiente en PENDIENTE. Es para pruebas.
+- **Ficha del bien (v4, Fase 2):** desde **Buscar** o desde la ficha de verificación ("Ver ficha completa e historial") se ve el bien completo y su historial (necesita conexión). Solo el ADMIN la edita: código, tipo, serie, marca, modelo, denominación, ambiente real (solo si ya está verificado) y observación, siempre con motivo.
+  - Un código 12D debe tener exactamente 12 dígitos y uno 8D, 8. Si el código ya existe en otro bien, la app avisa y solo lo guarda si se marca "Acepto el código repetido".
+  - **Conciliación:** si el código pertenece a una fila SIGA "SIN UBICAR" pendiente (por ejemplo, los códigos libres de los estabilizadores, ids 2372–2386), se marca "Es el mismo bien: conciliar". La fila SIGA no se borra: queda con `conciliado_con` = id del bien físico y deja de contar aparte (duplicados, búsqueda, SIN UBICAR y, en la Fase 5, los informes). Si después se le quita ese código al bien, la fila SIGA vuelve a contar (`DESCONCILIAR`).
+  - Al cambiar el código o el tipo se recalculan `cod_duplicado`, `en_siga`, `apto_etiqueta`, `destino_informe` (y la etiqueta si ya está verificado) del bien y de los que compartían el código, y `AMBIENTES.aptos_etiqueta`. Todo va al HISTORIAL (`EDITAR_FICHA`, `RECALCULO`, `CONCILIAR`).
 - **Sesión:** usuario y PIN, con el PIN guardado como SHA-256 con sal. El token dura 7 días. Tras 5 intentos fallidos, el usuario queda bloqueado 10 minutos. Para bloquear a alguien, ponga `activo = NO` en `USUARIOS`.
 
 ## API
@@ -65,6 +69,8 @@ Una sola URL (`…/exec`). Se llama con `POST`, `Content-Type: text/plain` y el 
 | `anularVerificacion` | `op_id, bien_id, motivo` | `bien` en PENDIENTE; los valores anteriores quedan en el HISTORIAL |
 | `anularSobrante` | `op_id, cod_sobrante, motivo` | `SOBRANTES.anulado = SI` |
 | `reiniciarAmbiente` | `op_id, ambiente_id, motivo` | solo ADMIN: `bienes_reiniciados, sobrantes_anulados` |
+| `editarBien` | `op_id, bien_id, cambios{…}, motivo, aceptar_duplicado?, conciliar?` | solo ADMIN: `bien`, `bienes` recalculados, `aviso?` |
+| `getHistorialBien` | `bien_id` | `total, filas[]` (lo más reciente primero, máx. 200) |
 
 `GET ?action=ping` solo devuelve conteos, sin datos de bienes, para comprobar que el servicio está vivo.
 
@@ -126,6 +132,7 @@ node prueba-fase0.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v3-estructura.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v4-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
+node prueba-v4-fase2.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-constancia.mjs "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx" constancia.pdf
 ```
 
