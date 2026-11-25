@@ -1,8 +1,7 @@
 // Búsqueda sin conexión sobre la base guardada en el celular.
-import { S, ambiente, nombreAmbiente } from '../store.js';
-import { h, hoja, fechaCorta } from '../ui.js';
-import { fichaVerificar } from './flujo.js';
-import { ir } from '../app.js';
+import { S, nombreAmbiente } from '../store.js';
+import { h } from '../ui.js';
+import { fichaBien } from './ficha.js';
 
 let texto = '';
 
@@ -38,19 +37,5 @@ export function vistaBuscar(params) {
 }
 
 function detalle(b) {
-  const activo = ambiente(S.ambienteActivo);
-  return hoja((cerrar) => h('div',
-    h('div.ficha',
-      h('div.ficha-den', b.denominacion),
-      h('div.ficha-cod', b.cod_patrimonial || b.cod_interno),
-      h('div.ficha-grid',
-        ...[['Tipo de código', b.tipo_codigo], ['Cód. interno', b.cod_interno], ['Marca', b.marca], ['Modelo', b.modelo], ['Serie', b.serie], ['Color', b.color],
-          ['Dimensiones', b.dimensiones], ['Ambiente ref.', nombreAmbiente(b.ambiente_id)], ['Responsable ref.', b.responsable_ref], ['Estado anterior', b.estado_ref],
-          ['Apto etiqueta', b.apto_etiqueta], ['Obs. ref.', b.obs_ref], ['Verificación', b.estado_verif], ['Ambiente real', nombreAmbiente(b.ambiente_real_id)],
-          ['Estado actual', b.estado_conserv], ['Etiqueta', b.etiqueta], ['Verificado por', b.verificado_por ? `${b.verificado_por} ${fechaCorta(b.verificado_en)}` : '']]
-          .filter(([, v]) => v).flatMap(([k, v]) => [h('span', k), h('b', v)]))),
-    h('div.botones',
-      h('button.btn.sec', { onclick: () => cerrar() }, 'Cerrar'),
-      activo && b.tipo_codigo === '12D' ? h('button.btn.pri', { onclick: () => { cerrar(); fichaVerificar(b); } }, 'Verificar en ' + activo.nombre) : null,
-      activo && b.tipo_codigo !== '12D' && b.ambiente_id === activo.id ? h('button.btn.pri', { onclick: () => { cerrar(); ir('#/amb/' + encodeURIComponent(activo.id)); } }, 'Ir al lote') : null)), { completa: true });
+  return fichaBien(b);
 }

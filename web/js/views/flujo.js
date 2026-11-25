@@ -1,5 +1,5 @@
 // Qué hacer con un código leído (cámara, lector Bluetooth o escrito a mano).
-import { S, ambiente, nombreAmbiente } from '../store.js';
+import { S, ambiente, nombreAmbiente, esAdmin } from '../store.js';
 import { encolar } from '../cola.js';
 import { h, hoja, toast, beep, fechaCorta, selectorEstado, selectorSituacion, pedirMotivo } from '../ui.js';
 import { REFERIDO } from '../store.js';
@@ -119,6 +119,7 @@ export function fichaVerificar(b) {
       h('details.obs', h('summary', 'Agregar observación'),
         h('textarea', { rows: 2, maxLength: 200, placeholder: 'Observación (opcional)', oninput: (e) => { obs = e.target.value; } })),
       h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Cancelar'), btn),
+      h('button.desplegar.centro', { onclick: async () => { cerrar(false); const { fichaBien } = await import('./ficha.js'); fichaBien(b); } }, 'Ver ficha completa e historial' + (esAdmin() ? ' · editar' : '')),
       yaAqui && amb.estado !== 'CERRADO' ? h('button.desplegar.anular', { onclick: async () => { cerrar(false); await anularVerificacion(b); } }, 'Anular verificación de este bien') : null);
   });
 }

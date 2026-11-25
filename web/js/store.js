@@ -4,7 +4,8 @@ import { kvGet, kvSet } from './db.js';
 export const S = {
   sesion: null,          // {token, usuario, nombre, rol, vence}
   cols: [],
-  bienes: [],            // objetos
+  todos: [],             // todas las filas de BIENES (incluye las filas SIGA conciliadas)
+  bienes: [],            // filas vigentes (sin las conciliadas): es lo que usa la app
   porId: new Map(),
   porCodigo: new Map(),  // cod_patrimonial -> [bienes]
   ambientes: [],
@@ -33,11 +34,12 @@ export function grupoClave(b) {
     .map((v) => String(v || '').trim().toUpperCase()).join('|');
 }
 
-function indexar() {
+export function indexar() {
   S.porId = new Map();
   S.porCodigo = new Map();
+  for (const b of S.todos) S.porId.set(b.id, b);
+  S.bienes = S.todos.filter((b) => !b.conciliado_con);
   for (const b of S.bienes) {
-    S.porId.set(b.id, b);
     const c = String(b.cod_patrimonial || '').trim();
     if (c) {
       if (!S.porCodigo.has(c)) S.porCodigo.set(c, []);
@@ -48,7 +50,7 @@ function indexar() {
 
 export function cargarBase(d) {
   S.cols = d.bienes.columnas;
-  S.bienes = d.bienes.filas.map((f) => Object.fromEntries(S.cols.map((c, i) => [c, String(f[i] ?? '')])));
+  S.todos = d.bienes.filas.map((f) => Object.fromEntries(S.cols.map((c, i) => [c, String(f[i] ?? '')])));
   S.ambientes = d.ambientes;
   S.personal = d.personal || [];
   S.config = d.config || {};
@@ -71,7 +73,10 @@ export function aplicarFilasServidor(filas, omitir = new Set()) {
 
 export function aplicarBien(o) {
   const b = S.porId.get(String(o.id));
-  if (b) Object.assign(b, o);
+  if (!b) return;
+  const reindexar = (o.cod_patrimonial !== undefined && o.cod_patrimonial !== b.cod_patrimonial) || (o.conciliado_con !== undefined && o.conciliado_con !== b.conciliado_con);
+  Object.assign(b, o);
+  if (reindexar) indexar();
 }
 
 export function ambiente(id) { return S.ambientes.find((a) => a.id === id); }
@@ -86,7 +91,7 @@ export async function guardarYa() {
   if (!S.cols.length) return;
   await kvSet('base', {
     cols: S.cols,
-    filas: S.bienes.map((b) => S.cols.map((c) => b[c])),
+    filas: S.todos.map((b) => S.cols.map((c) => b[c])),
     ambientes: S.ambientes, personal: S.personal, config: S.config, listas: S.listas,
     sobrantes: S.sobrantes, sobrantesLocales: S.sobrantesLocales, historial_n: S.historial_n,
     ultimaSync: S.ultimaSync, avisos: S.avisos.slice(-50)
@@ -97,7 +102,7 @@ export async function leerBaseLocal() {
   const d = await kvGet('base');
   if (!d) return false;
   S.cols = d.cols;
-  S.bienes = d.filas.map((f) => Object.fromEntries(S.cols.map((c, i) => [c, f[i]])));
+  S.todos = d.filas.map((f) => Object.fromEntries(S.cols.map((c, i) => [c, f[i] ?? ''])));
   S.ambientes = d.ambientes; S.personal = d.personal; S.config = d.config; S.listas = d.listas;
   S.sobrantes = d.sobrantes || []; S.sobrantesLocales = d.sobrantesLocales || [];
   S.historial_n = d.historial_n || 0; S.ultimaSync = d.ultimaSync || ''; S.avisos = d.avisos || [];
@@ -129,6 +134,7 @@ export function aplicarOpLocal(op, usuario) {
     const a = ambiente(op.ambiente_id);
     if (a) Object.assign(a, { estado: 'PENDIENTE', total_ubicado: '0', abierto_por: '', cerrado_por: '', fecha_cierre: '', constancia_estado: 'PENDIENTE', constancia_firmante: '', constancia_fecha: '' });
   }
+  else if (op.type === 'editarBien') editarLocal(op);
   guardarLuego();
 }
 
@@ -194,4 +200,63 @@ export function resumenAmbiente(id) {
 export function nombreAmbiente(id) {
   const a = ambiente(id);
   return a ? a.nombre : id || '—';
+}
+
+/* ----- v4 Fase 2: ficha editable (mismas reglas que ficha.gs) ----- */
+
+export const CAMPOS_FICHA = ['cod_patrimonial', 'tipo_codigo', 'serie', 'marca', 'modelo', 'denominacion', 'ambiente_real_id', 'obs_campo'];
+
+export function normalizarCampo(k, v) {
+  v = String(v ?? '').trim();
+  if (k === 'cod_patrimonial') return v.replace(/\s+/g, '');
+  if (k === 'obs_campo' || k === 'ambiente_real_id') return v;
+  return v.toUpperCase();
+}
+
+/** Error de validación del código o '' si está bien. */
+export function errorCodigo(cod, tipo) {
+  if (!['12D', '8D', 'ALTA', 'SIN'].includes(tipo)) return 'Tipo de código no válido.';
+  if (tipo === '12D' && !/^\d{12}$/.test(cod)) return `Un código 12D debe tener exactamente 12 dígitos numéricos (tiene ${cod.length}).`;
+  if (tipo === '8D' && !/^\d{8}$/.test(cod)) return `Un código 8D debe tener exactamente 8 dígitos numéricos (tiene ${cod.length}).`;
+  if (tipo === 'ALTA' && /^\d+$/.test(cod) && cod.length !== 8 && cod.length !== 12) return `Los códigos numéricos solo tienen 8 o 12 dígitos (este tiene ${cod.length}).`;
+  return '';
+}
+
+/** Otros bienes vigentes con ese código y si todos son filas SIGA sin ubicar pendientes (se pueden conciliar). */
+export function otrosConCodigo(cod, id) {
+  const otros = cod ? (S.porCodigo.get(cod) || []).filter((x) => x.id !== id) : [];
+  const conciliables = otros.length > 0 && otros.every((x) => x.fuente === 'SIGA' && x.ambiente_id === 'SIN_UBICAR' && x.estado_verif === 'PENDIENTE');
+  return { otros, conciliables };
+}
+
+function editarLocal(op) {
+  const b = S.porId.get(String(op.bien_id));
+  if (!b) return;
+  const antes = { ...b };
+  for (const [k, v] of Object.entries(op.cambios || {})) b[k] = normalizarCampo(k, v);
+  if (op.cambios.ambiente_real_id) b.responsable_real = (ambiente(b.ambiente_real_id) || {}).responsable || '';
+  b.version = String(Number(b.version || 0) + 1);
+  const codigos = new Set([antes.cod_patrimonial, b.cod_patrimonial].filter(Boolean));
+  const cambiaCod = antes.cod_patrimonial !== b.cod_patrimonial || antes.tipo_codigo !== b.tipo_codigo;
+  for (const x of S.todos) {
+    if (x === b) continue;
+    if (op.conciliar && x.cod_patrimonial === b.cod_patrimonial && !x.conciliado_con && x.fuente === 'SIGA' && x.estado_verif === 'PENDIENTE') Object.assign(x, { conciliado_con: b.id, cod_duplicado: 'NO', apto_etiqueta: 'NO' });
+    else if (x.conciliado_con === b.id && x.cod_patrimonial === antes.cod_patrimonial && antes.cod_patrimonial !== b.cod_patrimonial) x.conciliado_con = '';
+  }
+  const n = {};
+  for (const x of S.todos) if (x.tipo_codigo === '12D' && x.cod_patrimonial && !x.conciliado_con) n[x.cod_patrimonial] = (n[x.cod_patrimonial] || 0) + 1;
+  for (const x of S.todos) {
+    if (x.conciliado_con || (x !== b && !(cambiaCod && codigos.has(x.cod_patrimonial)))) continue;
+    const es12 = x.tipo_codigo === '12D';
+    const verif = x.estado_verif === 'UBICADO' || x.estado_verif === 'OBSERVADO';
+    const ref = ambiente(x.ambiente_id);
+    x.cod_duplicado = es12 && n[x.cod_patrimonial] > 1 ? 'SI' : 'NO';
+    x.en_siga = !es12 ? 'NO' : (x === b && cambiaCod ? 'SI' : (x.en_siga || 'SI'));
+    x.apto_etiqueta = es12 && x.cod_duplicado === 'NO' && (verif || (x.ambiente_id !== 'SIN_UBICAR' && ref && !ref.cambio_uso)) ? 'SI' : 'NO';
+    x.destino_informe = es12 ? 'DREP+INTERNO' : 'INTERNO';
+    if (verif) x.etiqueta = es12 ? 'DEFINITIVA' : 'TEMPORAL';
+  }
+  if (antes.ambiente_real_id) constanciaDesactualizada(antes.ambiente_real_id);
+  if (b.ambiente_real_id) constanciaDesactualizada(b.ambiente_real_id);
+  indexar();
 }

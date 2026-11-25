@@ -195,3 +195,14 @@ input.buscar { margin-bottom: 8px; }
 .hoja textarea { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 10px; background: #fff; font-size: 1rem; margin: 6px 0; }
 .hoja .chips { flex-wrap: wrap; overflow: visible; }
 .desplegar.anular { color: var(--rojo); display: block; margin: 12px auto 0; text-align: center; }
+
+/* v4 – Fase 2: ficha editable e historial */
+.campo select { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 10px; background: #fff; font-size: 1rem; }
+.desplegar.centro { display: block; margin: 12px auto 0; text-align: center; }
+.historial { margin: 12px 0; }
+.hist-lista { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow-y: auto; }
+.hist-fila { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; font-size: .82rem; background: #fff; }
+.hist-t { color: var(--suave); }
+.hist-s { word-break: break-word; }
+.hist-s s { color: var(--suave); }
+.hist-m { color: var(--azul2); font-style: italic; }

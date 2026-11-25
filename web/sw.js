@@ -1,11 +1,11 @@
 // Service worker: guarda la app en el celular para abrirla sin conexión.
 // Al publicar una versión nueva, cambie VERSION para que los celulares se actualicen.
-const VERSION = 'inv-iesppa-1.2.0';
+const VERSION = 'inv-iesppa-1.3.0';
 const ARCHIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/api.js', 'js/cola.js', 'js/config.js', 'js/constancia.js', 'js/db.js', 'js/scanner.js', 'js/store.js', 'js/ui.js',
   'js/views/ambiente.js', 'js/views/ambientes.js', 'js/views/buscar.js', 'js/views/escaner.js',
-  'js/views/flujo.js', 'js/views/login.js', 'js/views/sobrante.js',
+  'js/views/ficha.js', 'js/views/flujo.js', 'js/views/login.js', 'js/views/sobrante.js',
   'vendor/html5-qrcode.min.js', 'vendor/jspdf.umd.min.js', 'vendor/jspdf.plugin.autotable.min.js', 'img/encabezado_constancia.png', 'icons/icon-192.png', 'icons/icon-512.png'
 ];
 
