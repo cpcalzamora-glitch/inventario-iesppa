@@ -24,5 +24,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
+      # GitHub a veces tarda en registrar el artefacto recién subido: se espera un momento antes de publicar.
+      - run: sleep 20
       - id: despliegue
         uses: actions/deploy-pages@v4
