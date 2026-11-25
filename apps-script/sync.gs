@@ -24,7 +24,9 @@ var OPERACIONES = {
   // v4 – Fase 1: corregir sin borrar (todo queda en HISTORIAL con su motivo)
   anularVerificacion: opAnularVerificacion_,
   anularSobrante: opAnularSobrante_,
-  reiniciarAmbiente: opReiniciarAmbiente_
+  reiniciarAmbiente: opReiniciarAmbiente_,
+  // v4 – Fase 2: ficha del bien editable (solo ADMIN)
+  editarBien: opEditarBien_
 };
 
 /** Clave de agrupación para la vista por lote. Debe ser idéntica a grupoClave() del frontend. */
@@ -77,7 +79,7 @@ function cargarContexto_(sesion) {
   return {
     sesion: sesion, B: B, A: A, porId: porId, ambPorId: ambPorId, opsVistas: vistas,
     bienesSucios: {}, ambSucios: {}, hist: [], sobrantes: [], config: null,
-    Sob: null, sobSucios: {} // hoja SOBRANTES: se lee solo si una operación la necesita
+    celdas: {}, Sob: null, sobSucios: {} // hoja SOBRANTES: se lee solo si una operación la necesita
   };
 }
 
@@ -96,6 +98,10 @@ function guardarContexto_(ctx) {
   var filas = Object.keys(ctx.bienesSucios).map(Number).sort(function (a, b) { return a - b; });
   escribirTramos_(ctx, filas, COLS_VERIF);
   escribirTramos_(ctx, filas, COLS_VERIF_V3);
+  Object.keys(ctx.celdas).forEach(function (key) {
+    var p = key.split(':').map(Number);
+    ctx.B.sh.getRange(p[0] + 2, p[1] + 1).setNumberFormat('@').setValue(ctx.B.rows[p[0]][p[1]]);
+  });
   Object.keys(ctx.ambSucios).forEach(function (k) {
     var n = Number(k);
     var fila = ctx.A.rows[n];
@@ -163,10 +169,13 @@ function setBien_(ctx, i, campos, op, accion) {
     var k = ctx.B.idx[c];
     var nuevo = String(campos[c]);
     if (row[k] === nuevo) return;
+    if (k === undefined) throw new Error('Falta la columna ' + c + ' en BIENES.');
     if (c !== 'version' && c !== 'verificado_en' && c !== 'verificado_por') {
       histRow_(ctx, op, id, accion, c, row[k], nuevo);
     }
     row[k] = nuevo;
+    // Columnas de referencia (ficha editable del ADMIN): se escriben celda por celda.
+    if (COLS_VERIF.indexOf(c) < 0 && COLS_VERIF_V3.indexOf(c) < 0) ctx.celdas[i + ':' + k] = true;
   });
   ctx.bienesSucios[i] = true;
 }

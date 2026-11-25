@@ -13,7 +13,9 @@ var HOJAS = {
     'estado_verif', 'ambiente_real_id', 'responsable_real', 'estado_conserv', 'etiqueta', 'foto_url',
     'obs_campo', 'verificado_por', 'verificado_en', 'version', 'entidad_id',
     // agregadas al final en la v3 (no cambian el orden de las anteriores)
-    'destino_informe', 'situacion_especial', 'ref_declaracion', 'situacion'],
+    'destino_informe', 'situacion_especial', 'ref_declaracion', 'situacion',
+    // v4: fila SIGA conciliada con el bien físico que tomó su código (id de ese bien)
+    'conciliado_con'],
   AMBIENTES: ['id', 'nombre', 'numero', 'programa', 'ubicacion', 'responsable', 'origen', 'cambio_uso',
     'total_esperado', 'aptos_etiqueta', 'estado', 'total_ubicado', 'abierto_por', 'cerrado_por', 'fecha_cierre',
     'constancia_estado', 'constancia_firmante', 'constancia_fecha'],
