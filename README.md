@@ -133,6 +133,8 @@ node prueba-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v3-estructura.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v4-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v4-fase2.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
+node prueba-revision.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
+node prueba-revision-web.mjs
 node prueba-constancia.mjs "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx" constancia.pdf
 ```
 
