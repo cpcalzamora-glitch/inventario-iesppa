@@ -305,6 +305,15 @@ function opVerificar_(ctx, op) {
   if (i === undefined) throw new Error('No existe el bien ' + op.bien_id);
   var amb = ambObj_(ctx, op.ambiente_id);
   exigirAmbienteAbierto_(amb);
+  // Fila SIGA conciliada (un celular con datos viejos la eligió): se verifica el bien físico con el que se concilió.
+  var conc = ctx.B.idx.conciliado_con !== undefined ? ctx.B.rows[i][ctx.B.idx.conciliado_con] : '';
+  if (conc && ctx.porId[conc] !== undefined) {
+    var r = verificarFila_(ctx, ctx.porId[conc], amb, op, false);
+    var t = 'La fila SIGA ' + op.bien_id + ' está conciliada con el bien ' + conc + ': se verificó ese bien.';
+    if (r.aviso) r.aviso = t + ' ' + r.aviso; else r.aviso = t;
+    r.bienes = [bienObj_(ctx, i)]; // para que el celular deshaga lo que marcó en la fila SIGA
+    return r;
+  }
   return verificarFila_(ctx, i, amb, op, false);
 }
 
@@ -591,19 +600,23 @@ function getCambios_(p) {
   var desde = Math.max(0, Number(p.desde_n || 0));
   var sh = hoja_('HISTORIAL');
   var total = Math.max(0, sh.getLastRow() - 1);
+  if (desde > total) desde = 0; // el celular cree tener más historial del que hay (hoja recortada a mano): releer todo
   var ids = {};
   (p.ids || []).forEach(function (id) { ids[String(id)] = true; }); // bienes a releer (p. ej. tras un error)
   if (total > desde) {
     leerColumna_('HISTORIAL', 'bien_id').slice(desde).forEach(function (id) { if (id) ids[id] = true; });
   }
   var bienes = [];
+  var columnas = null;
   if (Object.keys(ids).length) {
     var B = leerTabla_('BIENES');
     bienes = B.rows.filter(function (r) { return ids[r[B.idx.id]]; });
+    columnas = B.header; // el celular ubica cada valor por nombre de columna (BIENES puede haber ganado columnas)
   }
   return {
     servidor_ts: ahora_(),
     historial_n: total,
+    columnas: columnas,
     bienes: bienes,
     ambientes: aObjetos_(leerTabla_('AMBIENTES')),
     sobrantes: aObjetos_(leerTabla_('SOBRANTES'))
