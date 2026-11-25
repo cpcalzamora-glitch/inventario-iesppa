@@ -1,7 +1,7 @@
 // Qué hacer con un código leído (cámara, lector Bluetooth o escrito a mano).
 import { S, ambiente, nombreAmbiente } from '../store.js';
 import { encolar } from '../cola.js';
-import { h, hoja, toast, beep, fechaCorta, selectorEstado, selectorSituacion } from '../ui.js';
+import { h, hoja, toast, beep, fechaCorta, selectorEstado, selectorSituacion, pedirMotivo } from '../ui.js';
 import { REFERIDO } from '../store.js';
 import { abrirSobrante } from './sobrante.js';
 
@@ -118,6 +118,20 @@ export function fichaVerificar(b) {
       selectorSituacion(situacion, (v) => { situacion = v; }),
       h('details.obs', h('summary', 'Agregar observación'),
         h('textarea', { rows: 2, maxLength: 200, placeholder: 'Observación (opcional)', oninput: (e) => { obs = e.target.value; } })),
-      h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Cancelar'), btn));
+      h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Cancelar'), btn),
+      yaAqui && amb.estado !== 'CERRADO' ? h('button.desplegar.anular', { onclick: async () => { cerrar(false); await anularVerificacion(b); } }, 'Anular verificación de este bien') : null);
   });
+}
+
+/** Anula la verificación: el bien vuelve a PENDIENTE y el registro anterior queda en el HISTORIAL. */
+export async function anularVerificacion(b) {
+  const a = ambiente(b.ambiente_real_id);
+  if (a && a.estado === 'CERRADO') { toast(a.nombre + ' está cerrado. El administrador debe reabrirlo primero.', 'error', 4500); return false; }
+  const motivo = await pedirMotivo('Anular verificación',
+    `${b.denominacion} (${b.cod_patrimonial || b.cod_interno}) volverá a PENDIENTE. Lo verificado por ${b.verificado_por || '—'} queda en el HISTORIAL.`,
+    { si: 'Anular', peligro: true, opciones: ['Escaneado por error', 'No es el bien', 'Ambiente equivocado'] });
+  if (!motivo) return false;
+  await encolar('anularVerificacion', { bien_id: b.id, ambiente_id: b.ambiente_real_id, motivo });
+  toast('Verificación anulada: el bien quedó pendiente');
+  return true;
 }

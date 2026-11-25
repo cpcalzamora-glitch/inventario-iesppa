@@ -1,6 +1,6 @@
 // Constancia de verificación física por ambiente (PDF A4 horizontal), generada en el celular
 // a partir de lo verificado. Replica el diseño aprobado (constancia.py / prototipo del Aula 102).
-import { S } from './store.js';
+import { S, sobrantesDe } from './store.js';
 
 const ANCHO = 806;           // ancho útil: A4 horizontal (841.89 pt) menos 18 pt por lado
 const MARGEN = 18;
@@ -85,7 +85,7 @@ export function filasConstancia(amb) {
     if (b.obs_campo) obs.push(b.obs_campo);
     grupos[grupos.length - 1].filas.push([b.cod_interno, codigoMostrado(b), b.denominacion, b.marca, b.modelo, b.color, b.serie, b.dimensiones, b.situacion || 'U', b.estado_conserv, obs.join(' · ')].map(limpio));
   }
-  const sobr = S.sobrantes.filter((s) => s.ambiente_id === amb.id);
+  const sobr = sobrantesDe(amb.id);
   // Sobrantes de este celular que ya recibieron código pero aún no llegan en la lista del servidor.
   for (const l of S.sobrantesLocales.filter((x) => x.ambiente_id === amb.id && x.codigos)) {
     for (const cod of l.codigos) if (!sobr.some((s) => s.cod_sobrante === cod)) sobr.push({ ...l, cod_sobrante: cod, denominacion: String(l.denominacion || '').toUpperCase() });

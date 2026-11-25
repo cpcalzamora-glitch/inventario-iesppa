@@ -107,6 +107,8 @@ export async function sincronizar() {
     S.pendientes = (await colaTodas()).length;
     guardarLuego();
     notificar();
+    // Una operación encolada justo cuando terminaba esta vuelta no debe esperar a la siguiente acción.
+    if (S.pendientes && S.enLinea && S.sesion) setTimeout(sincronizar, 300);
   }
 }
 

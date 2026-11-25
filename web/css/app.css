@@ -190,3 +190,8 @@ input.buscar { margin-bottom: 8px; }
 .toast.ver { opacity: 1; transform: translate(-50%, 0); }
 .toast.ok { background: var(--verde); }
 .toast.error { background: var(--rojo); }
+
+/* v4 – Fase 1: anular / reabrir / reiniciar */
+.hoja textarea { width: 100%; padding: 12px; border: 1px solid var(--borde); border-radius: 10px; background: #fff; font-size: 1rem; margin: 6px 0; }
+.hoja .chips { flex-wrap: wrap; overflow: visible; }
+.desplegar.anular { color: var(--rojo); display: block; margin: 12px auto 0; text-align: center; }

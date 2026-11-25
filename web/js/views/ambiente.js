@@ -1,8 +1,8 @@
 // Ambiente activo: pantalla principal de trabajo.
-import { S, ambiente, resumenAmbiente, grupoClave, nombreAmbiente, suscribir } from '../store.js';
+import { S, ambiente, resumenAmbiente, grupoClave, nombreAmbiente, suscribir, sobrantesDe, esAdmin } from '../store.js';
 import { encolar } from '../cola.js';
-import { h, hoja, toast, confirmar, selectorEstado, selectorSituacion, fechaCorta } from '../ui.js';
-import { procesarCodigo, fichaVerificar } from './flujo.js';
+import { h, hoja, toast, confirmar, pedirMotivo, selectorEstado, selectorSituacion, fechaCorta } from '../ui.js';
+import { procesarCodigo, fichaVerificar, anularVerificacion } from './flujo.js';
 import { abrirSobrante } from './sobrante.js';
 import { abrirEscaner } from './escaner.js';
 import { ir } from '../app.js';
@@ -27,7 +27,8 @@ export function vistaAmbiente(id) {
     cabecera.replaceChildren(h('div.amb-cab',
       h('div.amb-fila',
         h('button.icono', { onclick: () => ir('#/ambientes'), title: 'Volver' }, '‹'),
-        h('div.amb-tit', h('div.amb-nombre', amb.nombre), h('div.amb-ubic', [amb.ubicacion, amb.estado === 'CERRADO' ? 'CERRADO' : ''].filter(Boolean).join(' · ')))),
+        h('div.amb-tit', h('div.amb-nombre', amb.nombre), h('div.amb-ubic', [amb.ubicacion, amb.estado === 'CERRADO' ? 'CERRADO' : ''].filter(Boolean).join(' · '))),
+        esAdmin() ? h('button.icono', { onclick: () => menuAdmin(amb), title: 'Opciones del administrador' }, '⋯') : null),
       h('button.amb-resp', { onclick: () => editarResponsable(amb) }, h('span', 'Responsable: '), h('b', amb.responsable || 'POR DEFINIR'), ' ✎'),
       amb.constancia_estado === 'IMPRESA' ? h('div.constancia-pend',
         h('div', h('b', 'Constancia impresa · falta la firma'), h('small', ' ' + fechaCorta(amb.constancia_fecha))),
@@ -64,7 +65,11 @@ export function vistaAmbiente(id) {
     h('button.btn.sec', { onclick: () => abrirSobrante() }, '+ Sobrante'),
     h('button.btn.pri.grande', { onclick: () => abrirEscaner() }, '▣ Escanear'),
     h('button.btn.sec', { onclick: () => cerrarAmbiente(amb) }, 'Cerrar amb.'));
-  if (amb.estado === 'CERRADO') pie.replaceChildren(h('button.btn.pri.grande', { onclick: async () => { if (await reabrir(amb)) pintar(); } }, 'Reabrir ambiente'));
+  if (amb.estado === 'CERRADO') {
+    pie.replaceChildren(esAdmin()
+      ? h('button.btn.pri.grande', { onclick: async () => { if (await reabrir(amb)) ir('#/amb/' + encodeURIComponent(amb.id)); } }, 'Reabrir ambiente')
+      : h('p.texto.chico', 'Ambiente cerrado con constancia firmada. Solo el administrador puede reabrirlo.'));
+  }
 
   raiz.append(cabecera, cuerpo, pie);
   pintar();
@@ -77,7 +82,7 @@ function contarPestana(id, k) {
     const l = S.bienes.filter((b) => b.tipo_codigo === '12D' && (b.ambiente_id === id || b.ambiente_real_id === id));
     return `${l.filter((b) => b.estado_verif === 'UBICADO').length}/${l.length}`;
   }
-  if (k === 'sobr') return String(S.sobrantes.filter((s) => s.ambiente_id === id).length + S.sobrantesLocales.filter((s) => s.ambiente_id === id).reduce((n, s) => n + Number(s.cantidad || 1), 0));
+  if (k === 'sobr') return String(sobrantesDe(id).length + S.sobrantesLocales.filter((s) => s.ambiente_id === id).reduce((n, s) => n + Number(s.cantidad || 1), 0));
   const tipo = k === 'altas' ? 'ALTA' : 'LOTE';
   const l = S.bienes.filter((b) => b.ambiente_id === id && b.tipo_codigo !== '12D' && (tipo === 'ALTA') === (b.tipo_codigo === 'ALTA'));
   return `${l.filter((b) => b.estado_verif === 'UBICADO').length}/${l.length}`;
@@ -165,7 +170,7 @@ function listaLotes(id, tipo, repintar) {
         abiertos.has(k) ? h('div.filas', filas.map((b) => h('div.fila' + (b.estado_verif === 'UBICADO' ? '.hecho' : ''),
           h('span.ref', b.tipo_codigo === 'ALTA' ? b.cod_interno : 'Ref. ' + b.cod_interno),
           h('span.det', b.estado_verif === 'UBICADO' ? `✓ ${b.estado_conserv} · ${b.verificado_por}` : `Pendiente · ant. ${b.estado_ref || '—'}${b.serie && b.serie !== 'S.S.' ? ' · S/' + b.serie : ''}`),
-          b.estado_verif === 'UBICADO' ? null : h('button.btn.sec.chico', {
+          b.estado_verif === 'UBICADO' ? (b.ambiente_real_id === id && amb.estado !== 'CERRADO' ? h('button.btn.sec.chico', { onclick: () => anularVerificacion(b) }, 'Anular') : null) : h('button.btn.sec.chico', {
             onclick: async () => {
               await encolar('verificarLote', { ambiente_id: id, bien_ids: [b.id], estado_conserv: estadosGrupo[k], situacion: situacionGrupo[k] || 'U', responsable: amb.responsable });
               toast(`✓ ${b.cod_interno} ubicada · etiqueta TEMPORAL`);
@@ -175,13 +180,15 @@ function listaLotes(id, tipo, repintar) {
 }
 
 function listaSobrantes(id) {
-  const serv = S.sobrantes.filter((s) => s.ambiente_id === id);
+  const serv = sobrantesDe(id);
+  const cerrado = (ambiente(id) || {}).estado === 'CERRADO';
   const loc = S.sobrantesLocales.filter((s) => s.ambiente_id === id);
   return h('div.lista',
     h('button.btn.pri', { onclick: () => abrirSobrante() }, '+ Registrar sobrante'),
     !serv.length && !loc.length ? h('p.vacio', 'Sin sobrantes en este ambiente.') : null,
     loc.map((s) => h('div.item.pend', h('div.item-t', '⏳ ', s.denominacion, ' × ', s.cantidad), h('div.item-s', 'Código S-xxx pendiente: se asigna al sincronizar.'))),
-    serv.slice().reverse().map((s) => h('div.item', h('div.item-t', h('b', s.cod_sobrante), ' ', s.denominacion), h('div.item-s', [s.marca, s.modelo, s.serie, s.color, s.estado_conserv, s.registrado_por].filter(Boolean).join(' · ')))));
+    serv.slice().reverse().map((s) => h('div.item', h('div.item-t', h('b', s.cod_sobrante), ' ', s.denominacion), h('div.item-s', [s.marca, s.modelo, s.serie, s.color, s.estado_conserv, s.registrado_por].filter(Boolean).join(' · ')),
+      cerrado ? null : h('button.btn.sec.chico', { onclick: () => anularSobrante(s) }, 'Anular'))));
 }
 
 function editarResponsable(amb) {
@@ -208,7 +215,7 @@ async function cerrarAmbiente(amb) {
   const pend = S.bienes.filter((b) => b.ambiente_id === amb.id && b.estado_verif !== 'UBICADO');
   const r = resumenAmbiente(amb.id);
   const sinCodigo = S.sobrantesLocales.filter((s) => s.ambiente_id === amb.id && !s.codigos);
-  const sobr = S.sobrantes.filter((s) => s.ambiente_id === amb.id).length + sinCodigo.reduce((n, s) => n + Number(s.cantidad || 1), 0);
+  const sobr = sobrantesDe(amb.id).length + sinCodigo.reduce((n, s) => n + Number(s.cantidad || 1), 0);
   const ok = await hoja((cerrar) => h('div',
     h('h2', 'Cerrar ' + amb.nombre),
     h('div.resumen',
@@ -264,9 +271,48 @@ async function marcarFirmada(amb) {
 }
 
 export async function reabrir(amb) {
-  if (await confirmar('Reabrir ambiente', `${amb.nombre} está cerrado. ¿Abrirlo de nuevo para seguir verificando?`, { si: 'Reabrir' })) {
-    await encolar('abrirAmbiente', { ambiente_id: amb.id });
-    return true;
-  }
-  return false;
+  if (!esAdmin()) { toast(amb.nombre + ' está cerrado con constancia firmada. Solo el administrador puede reabrirlo.', 'error', 4500); return false; }
+  const motivo = await pedirMotivo('Reabrir ' + amb.nombre,
+    'Vuelve a EN CURSO y se conserva todo lo verificado. La constancia firmada queda en el HISTORIAL y habrá que generar una nueva.',
+    { si: 'Reabrir', opciones: ['Faltó verificar bienes', 'Corregir un error', 'Bien encontrado después'] });
+  if (!motivo) return false;
+  await encolar('abrirAmbiente', { ambiente_id: amb.id, motivo });
+  toast('Ambiente reabierto');
+  return true;
+}
+
+async function anularSobrante(s) {
+  const motivo = await pedirMotivo('Anular sobrante ' + s.cod_sobrante,
+    s.denominacion + '. La fila no se borra: queda marcada como anulada y el registro queda en el HISTORIAL.',
+    { si: 'Anular', peligro: true, opciones: ['Registrado por error', 'Duplicado', 'Era un bien con código'] });
+  if (!motivo) return;
+  await encolar('anularSobrante', { cod_sobrante: s.cod_sobrante, ambiente_id: s.ambiente_id, motivo });
+  toast('Sobrante anulado');
+}
+
+/** Opciones solo para el ADMIN. */
+async function menuAdmin(amb) {
+  const op = await hoja((cerrar) => h('div',
+    h('h2', 'Administrador · ' + amb.nombre),
+    h('div.lista',
+      amb.estado === 'CERRADO' ? h('button.item', { onclick: () => cerrar('reabrir') }, h('div.item-t', 'Reabrir ambiente'), h('div.item-s', 'Vuelve a EN CURSO y conserva lo verificado.')) : null,
+      h('button.item', { onclick: () => cerrar('reiniciar') }, h('div.item-t', '⚠ Reiniciar ambiente (pruebas)'), h('div.item-s', 'Todos sus bienes verificados vuelven a pendiente y sus sobrantes se anulan. Queda copia en el HISTORIAL.'))),
+    h('div.botones', h('button.btn.sec', { onclick: () => cerrar(null) }, 'Cerrar'))));
+  if (op === 'reabrir') { if (await reabrir(amb)) ir('#/amb/' + encodeURIComponent(amb.id)); }
+  else if (op === 'reiniciar') await reiniciar(amb);
+}
+
+async function reiniciar(amb) {
+  const nB = S.bienes.filter((b) => b.ambiente_real_id === amb.id && (b.estado_verif === 'UBICADO' || b.estado_verif === 'OBSERVADO')).length;
+  const nS = sobrantesDe(amb.id).length;
+  if (S.sobrantesLocales.some((s) => s.ambiente_id === amb.id)) { toast('Hay sobrantes sin sincronizar en este ambiente. Espere a que se sincronicen.', 'error', 4500); return; }
+  // Doble confirmación: primero el aviso, luego motivo + escribir REINICIAR.
+  if (!(await confirmar('Reiniciar ' + amb.nombre, `Se quitarán las verificaciones de ${nB} bien(es) (vuelven a PENDIENTE) y se anularán ${nS} sobrante(s). El ambiente vuelve a PENDIENTE. No se borra ninguna fila: todo queda en el HISTORIAL. Úselo solo para pruebas.`, { si: 'Continuar', peligro: true }))) return;
+  const motivo = await pedirMotivo('Confirmar reinicio', 'Segunda confirmación.', { si: 'Reiniciar ambiente', peligro: true, clave: 'REINICIAR', opciones: ['Prueba piloto'] });
+  if (!motivo) return;
+  await encolar('reiniciarAmbiente', { ambiente_id: amb.id, motivo });
+  S.ambienteActivo = '';
+  try { localStorage.removeItem('ambienteActivo'); } catch (e) { /* sin almacenamiento */ }
+  toast(`${amb.nombre} reiniciado: ${nB} bien(es) a pendiente`);
+  ir('#/ambientes');
 }

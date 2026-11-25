@@ -52,6 +52,29 @@ export function confirmar(titulo, texto, { si = 'Confirmar', no = 'Cancelar', pe
       h('button.btn' + (peligro ? '.peligro' : '.pri'), { onclick: () => cerrar(true) }, si))));
 }
 
+/**
+ * Pide un motivo (queda en el HISTORIAL). Devuelve el texto o null si cancela.
+ * opciones: motivos frecuentes que se eligen con un toque. clave: texto que hay que escribir para confirmar (doble confirmación).
+ */
+export function pedirMotivo(titulo, texto, { si = 'Confirmar', peligro = false, opciones = [], clave = '' } = {}) {
+  return hoja((cerrar) => {
+    const area = h('textarea', { rows: 2, maxLength: 200, placeholder: 'Motivo (obligatorio)', oninput: validar });
+    const inpClave = clave ? h('input.buscar', { placeholder: `Escriba ${clave}`, autocomplete: 'off', oninput: validar }) : null;
+    const btn = h('button.btn' + (peligro ? '.peligro' : '.pri'), { disabled: true, onclick: () => cerrar(area.value.trim()) }, si);
+    function validar() {
+      btn.disabled = area.value.trim().length < 3 || (clave && inpClave.value.trim().toUpperCase() !== clave.toUpperCase());
+    }
+    return h('div',
+      h('h2', titulo),
+      texto ? h('p.texto', texto) : null,
+      opciones.length ? h('div.chips', opciones.map((o) => h('button.chip-f', { type: 'button', onclick: () => { area.value = o; validar(); } }, o))) : null,
+      area,
+      inpClave ? h('p.texto.chico', `Para confirmar, escriba `, h('b', clave), ':') : null,
+      inpClave,
+      h('div.botones', h('button.btn.sec', { onclick: () => cerrar(null) }, 'Cancelar'), btn));
+  });
+}
+
 let audio = null;
 export function beep(ok = true) {
   try {

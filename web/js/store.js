@@ -120,8 +120,31 @@ export function aplicarOpLocal(op, usuario) {
   else if (op.type === 'firmarConstancia') { const a = ambiente(op.ambiente_id); if (a) { a.constancia_estado = 'FIRMADA'; a.constancia_firmante = op.firmante || a.responsable; a.estado = 'CERRADO'; a.cerrado_por = usuario; a.fecha_cierre = op.ts; } }
   else if (op.type === 'editarResponsableAmbiente') { const a = ambiente(op.ambiente_id); if (a) a.responsable = op.responsable; }
   else if (op.type === 'registrarSobrante') { S.sobrantesLocales.push({ op_id: op.op_id, ...op, codigos: null }); constanciaDesactualizada(op.ambiente_id); }
+  // v4: corregir sin borrar (el servidor deja el valor anterior en el HISTORIAL)
+  else if (op.type === 'anularVerificacion') { const b = S.porId.get(String(op.bien_id)); if (b) { constanciaDesactualizada(b.ambiente_real_id); anularLocal(b); } }
+  else if (op.type === 'anularSobrante') { const s = S.sobrantes.find((x) => x.cod_sobrante === op.cod_sobrante); if (s) { s.anulado = 'SI'; constanciaDesactualizada(s.ambiente_id); } }
+  else if (op.type === 'reiniciarAmbiente') {
+    S.bienes.forEach((b) => { if (b.ambiente_real_id === op.ambiente_id && (b.estado_verif === 'UBICADO' || b.estado_verif === 'OBSERVADO')) anularLocal(b); });
+    S.sobrantes.forEach((s) => { if (s.ambiente_id === op.ambiente_id) s.anulado = 'SI'; });
+    const a = ambiente(op.ambiente_id);
+    if (a) Object.assign(a, { estado: 'PENDIENTE', total_ubicado: '0', abierto_por: '', cerrado_por: '', fecha_cierre: '', constancia_estado: 'PENDIENTE', constancia_firmante: '', constancia_fecha: '' });
+  }
   guardarLuego();
 }
+
+function anularLocal(b) {
+  Object.assign(b, {
+    estado_verif: 'PENDIENTE', ambiente_real_id: '', responsable_real: '', estado_conserv: '', etiqueta: 'NO',
+    obs_campo: '', situacion: '', verificado_por: '', verificado_en: '', version: String(Number(b.version || 0) + 1)
+  });
+}
+
+/** Sobrantes vigentes de un ambiente (sin los anulados). */
+export function sobrantesDe(ambId) {
+  return S.sobrantes.filter((s) => s.ambiente_id === ambId && s.anulado !== 'SI');
+}
+
+export function esAdmin() { return String(S.sesion?.rol || '').toUpperCase() === 'ADMIN'; }
 
 /** Si la constancia ya estaba impresa y cambia lo verificado, hay que generarla de nuevo (igual que el servidor). */
 function constanciaDesactualizada(ambId) {
