@@ -1,5 +1,6 @@
 // Estado de la app en memoria + copia en IndexedDB para trabajar sin conexión.
 import { kvGet, kvSet } from './db.js';
+import { EQUIPOS_POR_SERIE } from './config.js';
 
 export const S = {
   sesion: null,          // {token, usuario, nombre, rol, vence}
@@ -8,6 +9,8 @@ export const S = {
   bienes: [],            // filas vigentes (sin las conciliadas): es lo que usa la app
   porId: new Map(),
   porCodigo: new Map(),  // cod_patrimonial -> [bienes]
+  porSerie: new Map(),   // serie normalizada -> [bienes de cómputo / eléctricos]
+  internos: new Set(),
   ambientes: [],
   personal: [],
   config: {},
@@ -37,6 +40,8 @@ export function grupoClave(b) {
 export function indexar() {
   S.porId = new Map();
   S.porCodigo = new Map();
+  S.porSerie = new Map();     // serie normalizada -> [bienes de cómputo / eléctricos]
+  S.internos = new Set();     // códigos internos (referencia de las etiquetas temporales)
   for (const b of S.todos) S.porId.set(b.id, b);
   S.bienes = S.todos.filter((b) => !b.conciliado_con);
   for (const b of S.bienes) {
@@ -45,7 +50,46 @@ export function indexar() {
       if (!S.porCodigo.has(c)) S.porCodigo.set(c, []);
       S.porCodigo.get(c).push(b);
     }
+    if (b.cod_interno) S.internos.add(String(b.cod_interno).trim().toUpperCase());
+    const s = normalizarSerie(b.serie);
+    if (s && esEquipoPorSerie(b.denominacion)) {
+      if (!S.porSerie.has(s)) S.porSerie.set(s, []);
+      S.porSerie.get(s).push(b);
+    }
   }
+}
+
+/* ----- Búsqueda por número de serie ----- */
+
+const SERIES_VACIAS = new Set(['SS', 'SN', 'SINSERIE', 'NOTIENE', 'NT', 'NA']);
+const sinTildes = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/**
+ * Normaliza una serie para compararla: mayúsculas, sin tildes, sin espacios, guiones, puntos ni barras,
+ * y sin el prefijo "S/" de la serie guardada. Devuelve '' si no es una serie real (S.S., S/N, muy corta…).
+ */
+export function normalizarSerie(t) {
+  let s = sinTildes(t).toUpperCase().trim();
+  if (s.startsWith('S/')) s = s.slice(2);
+  s = s.replace(/[\s\-._/]/g, '');
+  return s.length >= 4 && !SERIES_VACIAS.has(s) ? s : '';
+}
+
+const regexEquipos = new RegExp('(^|[^A-Z0-9])(' + EQUIPOS_POR_SERIE.map((p) => sinTildes(p).toUpperCase().replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|') + ')(?=[^A-Z0-9]|$)');
+
+/** ¿La denominación es de un equipo de cómputo o eléctrico? (lista EQUIPOS_POR_SERIE en config.js) */
+export function esEquipoPorSerie(denominacion) {
+  return regexEquipos.test(sinTildes(denominacion).toUpperCase());
+}
+
+/** Bienes cuya serie coincide EXACTAMENTE (tras normalizar) con el texto leído. */
+export function buscarPorSerie(texto) {
+  const s = normalizarSerie(texto);
+  return s ? (S.porSerie.get(s) || []) : [];
+}
+
+export function esCodigoInterno(texto) {
+  return S.internos.has(String(texto ?? '').trim().toUpperCase());
 }
 
 export function cargarBase(d) {
@@ -149,7 +193,7 @@ export function aplicarOpLocal(op, usuario) {
 function anularLocal(b) {
   Object.assign(b, {
     estado_verif: 'PENDIENTE', ambiente_real_id: '', responsable_real: '', estado_conserv: '', etiqueta: 'NO',
-    obs_campo: '', situacion: '', verificado_por: '', verificado_en: '', version: String(Number(b.version || 0) + 1)
+    obs_campo: '', situacion: '', verificado_por: '', verificado_en: '', metodo_ubicacion: '', version: String(Number(b.version || 0) + 1)
   });
 }
 
@@ -184,6 +228,7 @@ function verificarLocal(id, op, usuario) {
     version: String(Number(b.version || 0) + 1)
   });
   if (op.obs) b.obs_campo = op.obs;
+  b.metodo_ubicacion = op.type === 'verificar' && op.por_serie ? 'SERIE' : '';
   if (b.situacion_especial === REFERIDO) b.situacion_especial = ''; // apareció: se quita la marca
 }
 

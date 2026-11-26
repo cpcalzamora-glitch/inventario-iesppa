@@ -206,3 +206,8 @@ input.buscar { margin-bottom: 8px; }
 .hist-s { word-break: break-word; }
 .hist-s s { color: var(--suave); }
 .hist-m { color: var(--azul2); font-style: italic; }
+
+/* Búsqueda por serie */
+.banda.azul { background: #e3eefa; color: var(--azul); }
+.busqueda-manual { margin: 10px 0; }
+.busqueda-manual .lista { max-height: 40vh; overflow-y: auto; }
