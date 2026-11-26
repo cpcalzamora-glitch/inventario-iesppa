@@ -20,6 +20,7 @@ const WEB = path.join(aqui, '..', '..', 'web');
 const { jsPDF } = require('jspdf');
 globalThis.window = globalThis;
 globalThis.jspdf = { jsPDF };
+globalThis.location = { hostname: 'localhost' };
 Object.defineProperty(globalThis, 'navigator', { value: { onLine: true, userAgent: 'node' }, configurable: true });
 globalThis.document = {
   createElement: () => ({}),

@@ -46,6 +46,8 @@ tools/
   - Un código 12D debe tener exactamente 12 dígitos y uno 8D, 8. Si el código ya existe en otro bien, la app avisa y solo lo guarda si se marca "Acepto el código repetido".
   - **Conciliación:** si el código pertenece a una fila SIGA "SIN UBICAR" pendiente (por ejemplo, los códigos libres de los estabilizadores, ids 2372–2386), se marca "Es el mismo bien: conciliar". La fila SIGA no se borra: queda con `conciliado_con` = id del bien físico y deja de contar aparte (duplicados, búsqueda, SIN UBICAR y, en la Fase 5, los informes). Si después se le quita ese código al bien, la fila SIGA vuelve a contar (`DESCONCILIAR`).
   - Al cambiar el código o el tipo se recalculan `cod_duplicado`, `en_siga`, `apto_etiqueta`, `destino_informe` (y la etiqueta si ya está verificado) del bien y de los que compartían el código, y `AMBIENTES.aptos_etiqueta`. Todo va al HISTORIAL (`EDITAR_FICHA`, `RECALCULO`, `CONCILIAR`).
+- **Búsqueda por número de serie:** si el código leído o escrito no es un código patrimonial ni un código interno, la app lo busca como serie, solo en equipos de cómputo y eléctricos (lista `EQUIPOS_POR_SERIE` en `web/js/config.js`, fácil de editar). Normaliza mayúsculas, espacios, guiones, puntos y el prefijo "S/", y solo acepta coincidencia exacta. Muestra la ficha y pide confirmar (o deja elegir si hay varios); si no encuentra nada muestra "Serie no encontrada" con búsqueda manual. Se guarda `BIENES.metodo_ubicacion = SERIE`.
+- **Reiniciar datos de prueba:** menú **Inventario App → Reiniciar datos de prueba** (doble confirmación). Limpia las verificaciones, deja todos los ambientes en PENDIENTE sin constancias y anula los sobrantes de prueba; no toca códigos, denominaciones, series ni datos base. Todo va al HISTORIAL (`REINICIO_PRUEBAS`).
 - **Sesión:** usuario y PIN, con el PIN guardado como SHA-256 con sal. El token dura 7 días. Tras 5 intentos fallidos, el usuario queda bloqueado 10 minutos. Para bloquear a alguien, ponga `activo = NO` en `USUARIOS`.
 
 ## API
@@ -135,6 +137,8 @@ node prueba-v4-fase1.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-v4-fase2.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-revision.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-revision-web.mjs
+node prueba-serie-reinicio.js "<ruta>BD_APP_INVENTARIO_IESPPA_2026.xlsx"
+node prueba-serie-web.mjs "<ruta>BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-constancia.mjs "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx" constancia.pdf
 ```
 

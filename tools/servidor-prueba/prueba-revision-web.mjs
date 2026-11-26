@@ -3,6 +3,7 @@
  * Uso: node prueba-revision-web.mjs
  */
 Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true });
+globalThis.location = { hostname: 'localhost' };
 globalThis.indexedDB = { open: () => ({}) }; // nunca resuelve: no se guarda nada en esta prueba
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 
