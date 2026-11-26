@@ -350,6 +350,8 @@ function verificarFila_(ctx, i, amb, op, enLote) {
     version: String(Number(b.version || 0) + 1)
   };
   if (op.obs !== undefined && String(op.obs).trim() !== '') campos.obs_campo = String(op.obs).trim();
+  // Cómo se ubicó el bien en esta verificación: SERIE si se encontró por su número de serie.
+  if (ctx.B.idx.metodo_ubicacion !== undefined) campos.metodo_ubicacion = op.por_serie && !enLote ? 'SERIE' : '';
   setBien_(ctx, i, campos, op, mover ? 'MOVER' : (enLote ? 'VERIFICAR_LOTE' : 'VERIFICAR'));
   [amb.id, mover ? b.ambiente_real_id : ''].forEach(function (id) {
     var t = invalidarConstancia_(ctx, id, op);
@@ -510,10 +512,12 @@ function anularFila_(ctx, i, op, accion) {
   var b = bienObj_(ctx, i);
   if (b.verificado_por) histRow_(ctx, op, b.id, accion, 'verificado_por', b.verificado_por, '');
   if (b.verificado_en) histRow_(ctx, op, b.id, accion, 'verificado_en', b.verificado_en, '');
-  setBien_(ctx, i, {
+  var c = {
     estado_verif: 'PENDIENTE', ambiente_real_id: '', responsable_real: '', estado_conserv: '', etiqueta: 'NO',
     obs_campo: '', situacion: '', verificado_por: '', verificado_en: '', version: String(Number(b.version || 0) + 1)
-  }, op, accion);
+  };
+  if (ctx.B.idx.metodo_ubicacion !== undefined) c.metodo_ubicacion = '';
+  setBien_(ctx, i, c, op, accion);
   return b;
 }
 
