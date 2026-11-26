@@ -7,7 +7,90 @@ function onOpen() {
     .addItem('Asignar PIN a un usuario', 'menuAsignarPin')
     .addItem('Verificar estructura', 'menuVerificarEstructura')
     .addItem('Actualizar estructura (v3 y v4)', 'menuMigrarV3')
+    .addSeparator()
+    .addItem('Reiniciar datos de prueba (antes del inventario)', 'menuReiniciarDatosPrueba')
     .addToUi();
+}
+
+function menuReiniciarDatosPrueba() {
+  var ui = SpreadsheetApp.getUi();
+  var ok = ui.alert('Reiniciar datos de prueba',
+    'Todos los bienes vuelven a PENDIENTE (se limpian las verificaciones) y todos los ambientes a PENDIENTE, sin constancias. ' +
+    'Los sobrantes de prueba quedan anulados. NO se tocan códigos, denominaciones, series ni los datos base. ' +
+    'Todo queda en el HISTORIAL.\n\nAntes: compruebe que todos los celulares muestren "Pendientes: 0". ¿Continuar?', ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+  var r = ui.prompt('Confirmar reinicio', 'Escriba REINICIAR para confirmar:', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK || r.getResponseText().trim().toUpperCase() !== 'REINICIAR') { ui.alert('Cancelado: no se cambió nada.'); return; }
+  try {
+    var res = reiniciarDatosPrueba('admin-hoja');
+    ui.alert('Datos de prueba reiniciados', res.texto, ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error: ' + e.message);
+  }
+}
+
+/**
+ * Deja la base lista para el inventario real: limpia las verificaciones de prueba de BIENES, deja todos los
+ * ambientes en PENDIENTE sin constancia y anula los sobrantes de prueba. No toca códigos, denominaciones,
+ * series ni ningún dato base. Cada valor anterior queda en el HISTORIAL (acción REINICIO_PRUEBAS), así los
+ * celulares reciben el cambio al sincronizar.
+ */
+function reiniciarDatosPrueba(usuario) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var ctx = cargarContexto_({ usuario: usuario || 'admin-hoja', rol: 'ADMIN' });
+    var op = { op_id: 'REINICIO-' + Utilities.getUuid(), motivo: 'Reinicio de datos de prueba antes del inventario', dispositivo: 'Hoja de cálculo' };
+    var limpio = {
+      estado_verif: 'PENDIENTE', ambiente_real_id: '', responsable_real: '', estado_conserv: '', etiqueta: 'NO',
+      foto_url: '', obs_campo: '', verificado_por: '', verificado_en: '', situacion: ''
+    };
+    if (ctx.B.idx.metodo_ubicacion !== undefined) limpio.metodo_ubicacion = '';
+    var bienes = 0;
+    for (var k = 0; k < ctx.B.rows.length; k++) {
+      var b = bienObj_(ctx, k);
+      var sucio = Object.keys(limpio).some(function (c) { return (b[c] || '') !== limpio[c]; });
+      if (!sucio) continue;
+      if (b.verificado_por) histRow_(ctx, op, b.id, 'REINICIO_PRUEBAS', 'verificado_por', b.verificado_por, '');
+      if (b.verificado_en) histRow_(ctx, op, b.id, 'REINICIO_PRUEBAS', 'verificado_en', b.verificado_en, '');
+      setBien_(ctx, k, limpio, op, 'REINICIO_PRUEBAS');
+      bienes++;
+    }
+    var ambientes = 0;
+    ctx.A.rows.forEach(function (r) {
+      var id = r[ctx.A.idx.id];
+      if (!id) return;
+      var a = ambObj_(ctx, id);
+      var c = { estado: 'PENDIENTE', total_ubicado: '', abierto_por: '', cerrado_por: '', fecha_cierre: '',
+        constancia_estado: 'PENDIENTE', constancia_firmante: '', constancia_fecha: '' };
+      if (id === 'SIN_UBICAR') c.constancia_estado = a.constancia_estado || ''; // ambiente virtual: no lleva constancia
+      if (Object.keys(c).some(function (f) { return (a[f] || '') !== c[f]; })) { setAmb_(ctx, id, c, op, 'REINICIO_PRUEBAS'); ambientes++; }
+    });
+    var sobr = 0;
+    var T = sobTabla_(ctx);
+    if (T.idx.anulado !== undefined) {
+      T.rows.forEach(function (row, n) { if (row[T.idx.anulado] !== 'SI') { anularSobFila_(ctx, n, op, 'REINICIO_PRUEBAS'); sobr++; } });
+    }
+    guardarContexto_(ctx);
+    // Comprobación final sobre lo que quedó en la hoja.
+    var B = aObjetos_(leerTabla_('BIENES'));
+    var A = aObjetos_(leerTabla_('AMBIENTES'));
+    var r = {
+      total_bienes: B.length,
+      verificados: B.filter(function (x) { return x.estado_verif === 'UBICADO' || x.estado_verif === 'OBSERVADO'; }).length,
+      ambientes_pendiente: A.filter(function (x) { return x.estado === 'PENDIENTE'; }).length,
+      total_ambientes: A.length,
+      bienes_reiniciados: bienes, ambientes_reiniciados: ambientes, sobrantes_anulados: sobr
+    };
+    r.texto = 'Total de bienes: ' + r.total_bienes + '\nBienes verificados: ' + r.verificados +
+      '\nAmbientes en PENDIENTE: ' + r.ambientes_pendiente + ' de ' + r.total_ambientes +
+      '\n\nBienes limpiados: ' + bienes + ' | Ambientes reiniciados: ' + ambientes + ' | Sobrantes anulados: ' + sobr +
+      '\n\nEn cada celular: menú del usuario → "Volver a descargar la base completa".';
+    Logger.log(r.texto);
+    return r;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function menuAsignarPin() {
