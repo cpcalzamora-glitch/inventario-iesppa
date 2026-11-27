@@ -99,7 +99,7 @@ function listaConCodigo(id) {
     const aqui = ok && b.ambiente_real_id === id;
     const fuera = ok && !aqui;
     return h('button.item' + (aqui ? '.hecho' : '') + (fuera ? '.fuera' : ''), { onclick: () => fichaVerificar(b) },
-      h('div.item-t', h('span.marca', aqui ? '✓' : fuera ? '→' : '○'), ' ', b.cod_patrimonial, ' ', b.apto_etiqueta === 'SI' ? h('span.chip', 'apto') : null, b.cod_duplicado === 'SI' ? h('span.chip.amarillo', 'dup.') : null, b.situacion_especial ? h('span.chip.rojo', 'referido entregado') : null),
+      h('div.item-t', h('span.marca', aqui ? '✓' : fuera ? '→' : '○'), ' ', b.cod_patrimonial, ' ', h('small.int', 'Int. ' + (b.cod_interno || '—')), ' ', b.apto_etiqueta === 'SI' ? h('span.chip', 'apto') : null, b.cod_duplicado === 'SI' ? h('span.chip.amarillo', 'dup.') : null, b.situacion_especial ? h('span.chip.rojo', 'referido entregado') : null),
       h('div.item-s', `${b.denominacion} · ${b.marca} · S/${b.serie}`),
       aqui ? h('div.item-s.ok', `${b.estado_conserv} · ${b.verificado_por} ${fechaCorta(b.verificado_en)}`) : null,
       fuera ? h('div.item-s.alerta', `Ubicado en ${nombreAmbiente(b.ambiente_real_id)}`) : null,
@@ -171,7 +171,7 @@ function listaLotes(id, tipo, repintar) {
         !cerrado && n && pend.length ? h('button.btn.pri', { onclick: confirmarN }, `Confirmar ${Math.min(n, pend.length)} ubicada(s)`) : null,
         h('button.desplegar', { onclick: () => { abiertos.has(k) ? abiertos.delete(k) : abiertos.add(k); repintar(); } }, abiertos.has(k) ? 'Ocultar detalle ▲' : 'Ver uno por uno ▼'),
         abiertos.has(k) ? h('div.filas', filas.map((b) => h('div.fila' + (b.estado_verif === 'UBICADO' ? '.hecho' : ''),
-          h('span.ref', b.tipo_codigo === 'ALTA' ? b.cod_interno : 'Ref. ' + b.cod_interno),
+          h('span.ref', 'Int. ' + b.cod_interno),
           h('span.det', b.estado_verif === 'UBICADO' ? `✓ ${b.estado_conserv} · ${b.verificado_por}` : `Pendiente · ant. ${b.estado_ref || '—'}${b.serie && b.serie !== 'S.S.' ? ' · S/' + b.serie : ''}`),
           cerrado ? null : b.estado_verif === 'UBICADO' ? (b.ambiente_real_id === id ? h('button.btn.sec.chico', { onclick: () => anularVerificacion(b) }, 'Anular') : null) : h('button.btn.sec.chico', {
             onclick: async () => {
@@ -226,7 +226,7 @@ async function cerrarAmbiente(amb) {
       h('div', h('b', pend.length), h('small', 'pendientes')),
       h('div', h('b', sobr), h('small', 'sobrantes'))),
     pend.length ? h('p.texto.chico', 'Los pendientes NO pasan a faltantes: quedan "no ubicados en su ambiente" para el inventario aparte.') : null,
-    pend.length ? h('div.lista.corta', pend.slice(0, 80).map((b) => h('div.fila', h('span.ref', b.cod_patrimonial || b.cod_interno), h('span.det', b.denominacion)))) : null,
+    pend.length ? h('div.lista.corta', pend.slice(0, 80).map((b) => h('div.fila', h('span.ref', b.cod_interno), h('span.det', (b.cod_patrimonial ? b.cod_patrimonial + ' · ' : '') + b.denominacion)))) : null,
     h('p.texto.chico', 'Se genera la CONSTANCIA DE VERIFICACIÓN FÍSICA en PDF con lo verificado en este ambiente, para imprimirla y firmarla. El ambiente queda cerrado cuando marque la constancia como FIRMADA.'),
     h('div.botones', h('button.btn.sec', { onclick: () => cerrar(false) }, 'Seguir trabajando'), h('button.btn.pri', { onclick: () => cerrar(true) }, 'Generar constancia'))), { completa: true });
   if (!ok) return;

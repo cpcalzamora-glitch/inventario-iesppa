@@ -4,7 +4,7 @@
  * JSON {action, token, ...}. La respuesta es siempre JSON {ok, data} o {ok:false, error, codigo}.
  */
 
-var API_VERSION = '1.4.0';
+var API_VERSION = '1.5.0';
 
 var ACCIONES = {
   // acción: [función, requiereToken]

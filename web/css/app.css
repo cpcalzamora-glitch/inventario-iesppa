@@ -211,3 +211,6 @@ input.buscar { margin-bottom: 8px; }
 .banda.azul { background: #e3eefa; color: var(--azul); }
 .busqueda-manual { margin: 10px 0; }
 .busqueda-manual .lista { max-height: 40vh; overflow-y: auto; }
+
+/* Código interno junto al código patrimonial en las listas */
+small.int { font-weight: 600; opacity: .75; white-space: nowrap; }

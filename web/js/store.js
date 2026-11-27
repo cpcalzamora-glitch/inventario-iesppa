@@ -11,6 +11,7 @@ export const S = {
   porCodigo: new Map(),  // cod_patrimonial -> [bienes]
   porSerie: new Map(),   // serie normalizada -> [bienes de cómputo / eléctricos]
   internos: new Set(),
+  porInterno: new Map(), // cod_interno (5 dígitos) -> [bien]
   ambientes: [],
   personal: [],
   config: {},
@@ -42,6 +43,7 @@ export function indexar() {
   S.porCodigo = new Map();
   S.porSerie = new Map();     // serie normalizada -> [bienes de cómputo / eléctricos]
   S.internos = new Set();     // códigos internos (referencia de las etiquetas temporales)
+  S.porInterno = new Map();   // código interno de 5 dígitos -> [bien] (debe ser único)
   for (const b of S.todos) S.porId.set(b.id, b);
   S.bienes = S.todos.filter((b) => !b.conciliado_con);
   for (const b of S.bienes) {
@@ -50,7 +52,13 @@ export function indexar() {
       if (!S.porCodigo.has(c)) S.porCodigo.set(c, []);
       S.porCodigo.get(c).push(b);
     }
-    if (b.cod_interno) S.internos.add(String(b.cod_interno).trim().toUpperCase());
+    if (b.cod_interno) {
+      // El código interno es TEXTO de 5 dígitos ("00043"): se corrige si llegó como número (43).
+      b.cod_interno = normalizarInterno(b.cod_interno);
+      S.internos.add(b.cod_interno.toUpperCase());
+      if (!S.porInterno.has(b.cod_interno)) S.porInterno.set(b.cod_interno, []);
+      S.porInterno.get(b.cod_interno).push(b);
+    }
     const s = normalizarSerie(b.serie);
     if (s && esEquipoPorSerie(b.denominacion)) {
       if (!S.porSerie.has(s)) S.porSerie.set(s, []);
@@ -89,7 +97,19 @@ export function buscarPorSerie(texto) {
 }
 
 export function esCodigoInterno(texto) {
-  return S.internos.has(String(texto ?? '').trim().toUpperCase());
+  return S.internos.has(normalizarInterno(texto).toUpperCase());
+}
+
+/** Código interno siempre como texto de 5 dígitos: "43" o 43 → "00043". Otro texto se deja igual. */
+export function normalizarInterno(t) {
+  const s = String(t ?? '').trim();
+  return /^\d{1,5}$/.test(s) ? s.padStart(5, '0') : s;
+}
+
+/** Bienes con ese código interno (un número de 1 a 5 dígitos se completa con ceros). */
+export function buscarPorInterno(texto) {
+  const s = String(texto ?? '').trim();
+  return /^\d{1,5}$/.test(s) ? (S.porInterno.get(normalizarInterno(s)) || []) : [];
 }
 
 export function cargarBase(d) {
@@ -124,7 +144,8 @@ export function aplicarBien(o, indexarYa = true) {
   const b = S.porId.get(String(o.id));
   if (!b) return false;
   for (const k of Object.keys(o)) if (k && !S.cols.includes(k)) S.cols.push(k); // columna nueva: se guarda también en el celular
-  const reindexar = (o.cod_patrimonial !== undefined && o.cod_patrimonial !== b.cod_patrimonial) || (o.conciliado_con !== undefined && (o.conciliado_con || '') !== (b.conciliado_con || ''));
+  const cambia = (k) => o[k] !== undefined && String(o[k] || '') !== String(b[k] || '');
+  const reindexar = cambia('cod_patrimonial') || cambia('cod_interno') || cambia('serie') || cambia('denominacion') || (o.conciliado_con !== undefined && (o.conciliado_con || '') !== (b.conciliado_con || ''));
   Object.assign(b, o);
   if (reindexar && indexarYa) indexar();
   return reindexar;

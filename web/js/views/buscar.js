@@ -23,7 +23,7 @@ export function vistaBuscar(params) {
     lista.replaceChildren(
       h('p.ayuda', t || soloAmb ? `${total} resultado(s)${total > 100 ? ' · se muestran 100' : ''}` : 'Busque por código, serie, denominación, responsable o ambiente. Funciona sin conexión.'),
       ...l.slice(0, 100).map((b) => h('button.item' + (b.estado_verif === 'UBICADO' ? '.hecho' : ''), { onclick: () => detalle(b) },
-        h('div.item-t', b.cod_patrimonial || b.cod_interno, ' ', h('small', b.tipo_codigo)),
+        h('div.item-t', b.cod_patrimonial || b.cod_interno, ' ', h('small', b.tipo_codigo), b.cod_patrimonial ? h('small.int', ' · Int. ' + b.cod_interno) : null),
         h('div.item-s', `${b.denominacion} · ${b.marca} · S/${b.serie}`),
         h('div.item-s', b.estado_verif === 'UBICADO' ? `✓ Ubicado en ${nombreAmbiente(b.ambiente_real_id)}` : `Pendiente · ref. ${nombreAmbiente(b.ambiente_id)}`))));
   };

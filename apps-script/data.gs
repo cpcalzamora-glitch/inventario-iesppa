@@ -17,7 +17,9 @@ var HOJAS = {
     // v4: fila SIGA conciliada con el bien físico que tomó su código (id de ese bien)
     'conciliado_con',
     // cómo se ubicó en la verificación: SERIE si se encontró por número de serie
-    'metodo_ubicacion'],
+    'metodo_ubicacion',
+    // código interno anterior (solo histórico; el vigente es cod_interno, texto de 5 dígitos)
+    'cod_interno_anterior'],
   AMBIENTES: ['id', 'nombre', 'numero', 'programa', 'ubicacion', 'responsable', 'origen', 'cambio_uso',
     'total_esperado', 'aptos_etiqueta', 'estado', 'total_ubicado', 'abierto_por', 'cerrado_por', 'fecha_cierre',
     'constancia_estado', 'constancia_firmante', 'constancia_fecha'],
@@ -57,6 +59,10 @@ function leerTabla_(nombre) {
   var idx = {};
   header.forEach(function (h, i) { if (h) idx[h] = i; });
   var rows = values.slice(1).map(function (r) { return r.map(texto_); });
+  // El código interno es TEXTO de 5 dígitos: si alguna celda quedó como número (43), se lee como '00043'.
+  if (nombre === 'BIENES' && idx.cod_interno !== undefined) {
+    rows.forEach(function (r) { r[idx.cod_interno] = codInterno_(r[idx.cod_interno]); });
+  }
   return { sh: sh, header: header, idx: idx, rows: rows };
 }
 
@@ -74,6 +80,12 @@ function texto_(v) {
   if (v === null || v === undefined) return '';
   if (v instanceof Date) return Utilities.formatDate(v, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
   return String(v);
+}
+
+/** Código interno como texto de 5 dígitos: 43 → '00043'. Otro texto se deja igual. */
+function codInterno_(v) {
+  var s = String(v === null || v === undefined ? '' : v).trim();
+  return /^\d{1,5}$/.test(s) ? ('00000' + s).slice(-5) : s;
 }
 
 function ahora_() {

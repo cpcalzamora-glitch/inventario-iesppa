@@ -3,7 +3,7 @@
 import { CONFIG } from './config.js';
 import { llamar } from './api.js';
 import { colaPut, colaDel, colaTodas } from './db.js';
-import { S, aplicarOpLocal, aplicarBien, aplicarFilasServidor, notificar, guardarLuego, nombreAmbiente } from './store.js';
+import { S, aplicarOpLocal, aplicarBien, aplicarFilasServidor, notificar, guardarLuego, guardarYa, cargarBase, nombreAmbiente } from './store.js';
 
 let seq = 0;
 let tReintento = null;
@@ -138,6 +138,17 @@ export async function refrescar() {
   const releer = [...idsReleer];
   const d = await llamar('getCambios', { desde_n: S.historial_n, ids: releer });
   releer.forEach((id) => idsReleer.delete(id));
+  // La hoja BIENES ganó columnas (p. ej. el código interno nuevo de 5 dígitos y cod_interno_anterior): los datos
+  // de todas las filas pudieron cambiar sin pasar por el HISTORIAL, así que se descarga la base completa una vez.
+  // Solo sin operaciones pendientes; si las hay, se espera al próximo ciclo.
+  if (d.columnas && d.columnas.some((c) => c && !S.cols.includes(c))) {
+    if (pend.length) return;
+    cargarBase(await llamar('getBootstrap'));
+    await guardarYa();
+    S.enLinea = true;
+    notificar();
+    return;
+  }
   aplicarFilasServidor(d.bienes, ocupados, d.columnas);
   d.ambientes.forEach((a) => {
     if (ambOcupados.has(a.id)) return;

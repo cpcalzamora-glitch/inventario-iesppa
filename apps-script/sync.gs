@@ -616,6 +616,10 @@ function getCambios_(p) {
     var B = leerTabla_('BIENES');
     bienes = B.rows.filter(function (r) { return ids[r[B.idx.id]]; });
     columnas = B.header; // el celular ubica cada valor por nombre de columna (BIENES puede haber ganado columnas)
+  } else {
+    // Siempre se mandan los encabezados (solo la fila 1): si BIENES ganó columnas, el celular baja la base completa.
+    var shB = hoja_('BIENES');
+    columnas = shB.getRange(1, 1, 1, shB.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
   }
   return {
     servidor_ts: ahora_(),

@@ -1,5 +1,5 @@
 // Qué hacer con un código leído (cámara, lector Bluetooth o escrito a mano).
-import { S, ambiente, nombreAmbiente, esAdmin, buscarPorSerie, esCodigoInterno, normalizarSerie } from '../store.js';
+import { S, ambiente, nombreAmbiente, esAdmin, buscarPorSerie, esCodigoInterno, normalizarSerie, buscarPorInterno, normalizarInterno } from '../store.js';
 import { encolar } from '../cola.js';
 import { h, hoja, toast, beep, fechaCorta, selectorEstado, selectorSituacion, pedirMotivo } from '../ui.js';
 import { REFERIDO } from '../store.js';
@@ -10,8 +10,21 @@ export async function procesarCodigo(codigo) {
   const amb = ambiente(S.ambienteActivo);
   if (!amb) { toast('Primero abra un ambiente.', 'error'); return; }
   if (amb.estado === 'CERRADO') { beep(false); toast(amb.nombre + ' está cerrado con constancia firmada. Para verificar, el administrador debe reabrirlo.', 'error', 4500); return; }
+  codigo = String(codigo ?? '').trim().toUpperCase();
+  // Orden de búsqueda: 1) código patrimonial de 12 dígitos; 2) código interno de 5 dígitos (un número de
+  // 1 a 5 dígitos se completa con ceros: 43 → 00043); 3) código de lote de 8 dígitos; 4) número de serie.
   const lista = S.porCodigo.get(codigo) || [];
-  // No es código patrimonial ni interno: se busca como NÚMERO DE SERIE (solo equipos de cómputo y eléctricos,
+  const esInterno = /^\d{1,5}$/.test(codigo);
+  if (esInterno) {
+    const internos = buscarPorInterno(codigo);
+    if (internos.length) {
+      beep(true);
+      const b = internos.length === 1 ? internos[0] : await elegirDeLista(normalizarInterno(codigo), internos, 'Código interno repetido');
+      if (!b) return;
+      return fichaVerificar(b);
+    }
+  }
+  // No es código patrimonial, interno ni de lote: se busca como NÚMERO DE SERIE (solo equipos de cómputo y eléctricos,
   // coincidencia exacta tras normalizar). Nunca se verifica solo: se muestra la ficha y se pide confirmar.
   if (!lista.length && !esCodigoInterno(codigo)) {
     const porSerie = buscarPorSerie(codigo);
@@ -22,17 +35,17 @@ export async function procesarCodigo(codigo) {
       return fichaVerificar(b, { porSerie: true });
     }
   }
-  // Solo existen códigos de 8 o 12 dígitos: otra longitud se avisa y no se asume (ni se completa ni se recorta).
+  if (esInterno) { beep(false); return noExiste(normalizarInterno(codigo), 'Código interno no encontrado'); }
+  // Códigos patrimoniales: solo 8 o 12 dígitos. Otra longitud se avisa y no se asume (ni se completa ni se recorta).
   if (/^\d+$/.test(codigo) && codigo.length !== 8 && codigo.length !== 12) { beep(false); return longitudInvalida(codigo, lista); }
   if (!lista.length) { beep(false); return noExiste(codigo); }
   const c12 = lista.filter((b) => b.tipo_codigo === '12D');
   if (!c12.length) {
-    beep(false);
-    return hoja((cerrar) => h('div',
-      h('h2', 'Código de catálogo (sin correlativo)'),
-      h('p.texto', `El código ${codigo} lo comparten ${lista.length} bienes (${lista[0].denominacion}). No se puede distinguir escaneando.`),
-      h('p.texto', 'Verifíquelos contando en la pestaña "Por lote". Llevan etiqueta TEMPORAL.'),
-      h('div.botones', h('button.btn.pri', { onclick: () => cerrar() }, 'Entendido'))));
+    // Código de lote (8 dígitos): lo comparten varios bienes iguales. Se muestra la lista para elegir por código interno.
+    beep(true);
+    const b = lista.length === 1 ? lista[0] : await elegirDeLote(codigo, lista);
+    if (!b) return;
+    return fichaVerificar(b);
   }
   beep(true);
   let b = c12[0];
@@ -55,9 +68,9 @@ async function longitudInvalida(codigo, lista) {
   if (r && r.bien) return fichaVerificar(r.bien);
 }
 
-async function noExiste(codigo) {
+async function noExiste(codigo, titulo = 'Código no encontrado') {
   const r = await hoja((cerrar) => h('div',
-    h('div.banda.roja', 'Código no encontrado'),
+    h('div.banda.roja', titulo),
     h('h2.codigo', codigo),
     h('div.banda.amarilla', 'Serie no encontrada'),
     h('p.texto.chico', 'No figura como código patrimonial, código interno ni serie de un equipo. Puede ser una etiqueta mal leída: vuelva a intentar, búsquelo a mano o, si el bien no está en la base, regístrelo como sobrante.'),
@@ -84,7 +97,7 @@ function busquedaManual(cerrar) {
     lista.replaceChildren(
       h('p.ayuda', `${l.length} resultado(s)${l.length > 15 ? ' · se muestran 15' : ''}`),
       ...l.slice(0, 15).map((b) => h('button.item' + (b.estado_verif === 'UBICADO' ? '.hecho' : ''), { onclick: () => cerrar({ bien: b }) },
-        h('div.item-t', b.cod_patrimonial || b.cod_interno, ' ', h('small', b.tipo_codigo)),
+        h('div.item-t', b.cod_patrimonial || b.cod_interno, ' ', h('small', b.tipo_codigo), b.cod_patrimonial ? h('small.int', ' · Int. ' + b.cod_interno) : null),
         h('div.item-s', `${b.denominacion} · ${b.marca} · S/${b.serie}`),
         h('div.item-s', b.estado_verif === 'UBICADO' ? `✓ Ubicado en ${nombreAmbiente(b.ambiente_real_id)}` : `Registrado en ${nombreAmbiente(b.ambiente_id)}`))));
   };
@@ -105,6 +118,35 @@ function elegirPorSerie(texto, filas) {
       h('div.item-s', `${b.denominacion} · ${b.marca} · ${b.modelo}`),
       h('div.item-s', `Serie: ${b.serie} · Registrado en ${nombreAmbiente(b.ambiente_id)}`),
       b.estado_verif === 'UBICADO' ? h('div.item-s.ok', `✓ Ya ubicado en ${nombreAmbiente(b.ambiente_real_id)}`) : null))),
+    h('div.botones', h('button.btn.sec', { onclick: () => cerrar(null) }, 'Cancelar'))), { completa: true });
+}
+
+/** Código de lote de 8 dígitos: lista de los bienes del lote (los de este ambiente y pendientes primero). */
+function elegirDeLote(codigo, filas) {
+  const amb = S.ambienteActivo;
+  const orden = filas.slice().sort((a, b) =>
+    ((b.ambiente_id === amb) - (a.ambiente_id === amb)) || ((a.estado_verif === 'UBICADO') - (b.estado_verif === 'UBICADO')) ||
+    String(a.cod_interno).localeCompare(String(b.cod_interno)));
+  return hoja((cerrar) => h('div',
+    h('div.banda.azul', `Código de lote: ${filas.length} bienes`),
+    h('h2.codigo', codigo),
+    h('p.texto', `${filas[0].denominacion}. Elija el bien por su código interno (o cuéntelos en la pestaña "Por lote"). Etiqueta TEMPORAL.`),
+    h('div.lista', orden.slice(0, 60).map((b) => h('button.item' + (b.estado_verif === 'UBICADO' ? '.hecho' : ''), { onclick: () => cerrar(b) },
+      h('div.item-t', 'Int. ', h('b', b.cod_interno || '—'), ' ', h('small', b.tipo_codigo)),
+      h('div.item-s', [b.denominacion, b.marca, b.color, b.serie && b.serie !== 'S.S.' ? 'S/' + b.serie : ''].filter(Boolean).join(' · ')),
+      h('div.item-s', b.estado_verif === 'UBICADO' ? `✓ Ya ubicado en ${nombreAmbiente(b.ambiente_real_id)}` : `Pendiente · ${nombreAmbiente(b.ambiente_id)}`)))),
+    filas.length > 60 ? h('p.ayuda', `Se muestran 60 de ${filas.length}. Para los demás escriba el código interno.`) : null,
+    h('div.botones', h('button.btn.sec', { onclick: () => cerrar(null) }, 'Cancelar'))), { completa: true });
+}
+
+/** Varios bienes con el mismo código interno (no debería pasar): se elige comparando la serie. */
+function elegirDeLista(codigo, filas, titulo) {
+  return hoja((cerrar) => h('div',
+    h('div.banda.amarilla', `${titulo}: ${filas.length} bienes`),
+    h('h2.codigo', codigo),
+    h('div.lista', filas.map((b) => h('button.item', { onclick: () => cerrar(b) },
+      h('div.item-t', b.cod_patrimonial || b.cod_interno, ' ', h('small', b.tipo_codigo)),
+      h('div.item-s', `${b.denominacion} · ${b.marca} · S/${b.serie} · ${nombreAmbiente(b.ambiente_id)}`)))),
     h('div.botones', h('button.btn.sec', { onclick: () => cerrar(null) }, 'Cancelar'))), { completa: true });
 }
 
@@ -153,7 +195,7 @@ export async function fichaVerificar(b, { porSerie = false } = {}) {
           bien_id: b.id, ambiente_id: amb.id, estado_conserv: estado, situacion, responsable: amb.responsable,
           version_cliente: b.version, mover: mover || undefined, obs: obs || undefined, por_serie: porSerie || undefined
         });
-        toast(yaOtro ? '✓ Movido a este ambiente' : (referido ? '✓ Ubicado · se quitó la marca de "entregado sin baja"' : (es12 ? '✓ Ubicado · pegar etiqueta DEFINITIVA' : '✓ Ubicado · etiqueta TEMPORAL (Ref. ' + (b.cod_interno || b.id) + ')')));
+        toast(yaOtro ? '✓ Movido a este ambiente' : (referido ? '✓ Ubicado · se quitó la marca de "entregado sin baja"' : (es12 ? '✓ Ubicado · pegar etiqueta DEFINITIVA' : '✓ Ubicado · etiqueta TEMPORAL (cód. interno ' + (b.cod_interno || b.id) + ')')));
         cerrar(true);
       }
     }, yaAqui ? 'Actualizar estado' : (yaOtro ? 'Mover a este ambiente' : (b.ambiente_id !== amb.id && b.ambiente_id !== 'SIN_UBICAR' ? 'Confirmar aquí' : 'Confirmar'))
@@ -173,7 +215,7 @@ export async function fichaVerificar(b, { porSerie = false } = {}) {
           h('span', 'Cód. interno'), h('b', b.cod_interno || '—'),
           h('span', 'Ambiente ref.'), h('b', nombreAmbiente(b.ambiente_id)),
           h('span', 'Estado anterior'), h('b', b.estado_ref || '—'))),
-      es12 ? h('div.etiq', 'Etiqueta: ', h('b', 'DEFINITIVA'), ' (código de 12 dígitos)') : h('div.etiq', 'Etiqueta: ', h('b', 'TEMPORAL'), ` (Ref. ${b.cod_interno || b.id})`),
+      es12 ? h('div.etiq', 'Etiqueta: ', h('b', 'DEFINITIVA'), ' (código de 12 dígitos)') : h('div.etiq', 'Etiqueta: ', h('b', 'TEMPORAL'), ` (cód. interno ${b.cod_interno || b.id})`),
       noApto ? h('label.aviso-apto', chk, ' No figura como apto para etiqueta. Confirmo que el código y la serie coinciden con el bien.') : null,
       h('div.sub', 'Estado de conservación'),
       selectorEstado(estado, (v) => { estado = v; }),
