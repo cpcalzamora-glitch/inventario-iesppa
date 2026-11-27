@@ -140,6 +140,8 @@ node prueba-revision.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-revision-web.mjs
 node prueba-serie-reinicio.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
 node prueba-serie-web.mjs "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx"
+node preparar-codigo-interno.js "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx" "<ruta>\BD_PRUEBA_COD_INTERNO_5D.xlsx"
+node prueba-codigo-interno.mjs "<ruta>\BD_PRUEBA_COD_INTERNO_5D.xlsx"
 node prueba-constancia.mjs "<ruta>\BD_APP_INVENTARIO_IESPPA_2026.xlsx" constancia.pdf
 ```
 
